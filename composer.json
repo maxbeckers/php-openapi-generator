@@ -13,7 +13,7 @@
   "require": {
     "php": ">=8.2",
     "composer-plugin-api": "^2.0",
-    "maxbeckers/php-yaml-parser": ">=0.3.0",
+    "maxbeckers/php-yaml-parser": "^0.3.0",
     "twig/twig": "^3.0",
     "symfony/console": "^6.0|^7.0"
   },
