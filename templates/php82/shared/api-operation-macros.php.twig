@@ -1,0 +1,20 @@
+{% macro renderDocblock(op, indent) %}
+{% if op.deprecated or op.summary is not null or op.description is not null %}
+{{ indent }}/**
+{% if op.deprecated %}
+{{ indent }} * @deprecated
+{% endif %}
+{% if op.summary is not null %}
+{{ indent }} * {{ op.summary|raw }}
+{% endif %}
+{% if op.description is not null %}
+{{ indent }} *
+{{ indent }} * {{ op.description|raw }}
+{% endif %}
+{{ indent }} */
+{% endif %}
+{% endmacro %}
+
+{% macro renderSignature(op, bodyNullable) %}
+public function {{ op.operationId }}({% for p in op.allParams() %}{% if not loop.first %}, {% endif %}{{ p.phpType }} ${{ p.name }}{% endfor %}{% if op.requestBodyType is not null %}{% if op.allParams() is not empty %}, {% endif %}{{ op.requestBodyType|split('\\')|last }}{% if bodyNullable and not op.requestBodyRequired %}?{% endif %} $body{% endif %}): {% if op.returnsArray %}array{% else %}{{ op.returnType|split('\\')|last }}{% endif %}
+{% endmacro %}

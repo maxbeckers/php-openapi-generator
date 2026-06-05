@@ -1,0 +1,31 @@
+        $options = [];
+{% if hasQuery %}
+        $options[RequestOptions::QUERY] = $query;
+{% endif %}
+{% if op.requestBodyType is not null %}
+        $options[RequestOptions::JSON] = $body->toRequestArray();
+{% endif %}
+        {% if op.returnType != 'void' %}$response = {% endif %}$this->httpClient->request('{{ op.httpMethod|upper }}', $this->baseUrl . {{ op.phpPath }}, $options);
+{% if op.returnType == 'void' %}
+        // {{ op.successCodes|join(', ') }}
+{% elseif op.returnsArray %}
+        $data = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        $result = array_map(static fn(array $item) => {{ op.returnType|split('\\')|last|replace({'[]': ''}) }}::fromResponseArray($item), $data);
+{% if config.validationStrategy.name == 'NativeMethod' and config.validateClientResponse %}
+        $this->validateNativeResponsePayload($result);
+{% elseif config.validationStrategy.name == 'SymfonyConstraints' and config.validateClientResponse %}
+        $this->validateSymfonyResponsePayload($result);
+{% endif %}
+
+        return $result;
+{% else %}
+        $data = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        $result = {{ op.returnType|split('\\')|last }}::fromResponseArray($data);
+{% if config.validationStrategy.name == 'NativeMethod' and config.validateClientResponse %}
+        $this->validateNativeResponsePayload($result);
+{% elseif config.validationStrategy.name == 'SymfonyConstraints' and config.validateClientResponse %}
+        $this->validateSymfonyResponsePayload($result);
+{% endif %}
+
+        return $result;
+{% endif %}

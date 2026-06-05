@@ -1,0 +1,46 @@
+openapi: "3.0.0"
+info:
+  title: Read Write Flags API
+  version: "1.0.0"
+paths:
+  /accounts:
+    post:
+      summary: Create an account
+      operationId: createAccount
+      tags:
+        - accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Account'
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+components:
+  schemas:
+    Account:
+      type: object
+      required:
+        - id
+        - name
+        - password
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 8
+          writeOnly: true
+        nickname:
+          type: string
+          nullable: true

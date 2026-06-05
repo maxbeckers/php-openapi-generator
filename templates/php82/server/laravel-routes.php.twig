@@ -1,0 +1,23 @@
+{% import 'shared/generation-meta-macros.php.twig' as generation %}
+<?php
+
+declare(strict_types=1);
+
+namespace {{ group.namespace }};
+
+use Illuminate\Support\Facades\Route;
+
+{{ generation.renderFileHeader(generationMeta, '') }}
+final class {{ group.className }}Routes
+{
+    private function __construct()
+    {
+    }
+
+    public static function register(string $controller = {{ group.className }}Controller::class): void
+    {
+{% for op in group.operations %}
+        Route::{{ op.httpMethod }}({{ op.path|php_export }}, [$controller, {{ (op.operationId ~ 'Action')|php_export }}]);
+{% endfor %}
+    }
+}

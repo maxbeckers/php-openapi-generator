@@ -1,0 +1,40 @@
+openapi: "3.0.0"
+info:
+  title: Validation Types API
+  version: "1.0.0"
+paths: {}
+components:
+  schemas:
+    ValidationSample:
+      type: object
+      required:
+        - requiredName
+        - requiredNumber
+        - state
+      properties:
+        requiredName:
+          type: string
+          minLength: 1
+          maxLength: 10
+          pattern: '^[a-z]+$'
+        optionalText:
+          type: string
+          minLength: 2
+          maxLength: 50
+          nullable: true
+        requiredNumber:
+          type: integer
+          minimum: 1
+          maximum: 9
+          multipleOf: 2
+        scores:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items:
+            type: integer
+        state:
+          type: string
+          enum:
+            - active
+            - archived

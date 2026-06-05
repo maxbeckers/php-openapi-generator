@@ -1,0 +1,44 @@
+    #[Route('{{ op.path }}', methods: ['{{ op.httpMethod|upper }}'])]
+    public function {{ op.operationId }}Action(Request $request): JsonResponse
+    {
+{% if op.requestBodyType is not null and config.validationStrategy.name == 'NativeMethod' and config.validateServerRequest %}
+        $body = {{ op.requestBodyType|split('\\')|last }}::fromRequestArray($request->toArray());
+        $this->validateNativeRequestPayload($body);
+{% elseif op.requestBodyType is not null and config.validationStrategy.name == 'SymfonyConstraints' and config.validateServerRequest %}
+        $body = {{ op.requestBodyType|split('\\')|last }}::fromRequestArray($request->toArray());
+        $this->validateSymfonyRequestPayload($body);
+{% endif %}
+{% if op.returnType == 'void' %}
+        $this->{{ op.operationId }}(
+{% else %}
+        $result = $this->{{ op.operationId }}(
+{% endif %}
+{% for p in op.pathParams %}
+            {{ p.name }}: $request->attributes->get('{{ p.wireName }}'),
+{% endfor %}
+{% for p in op.queryParams %}
+            {{ p.name }}: $request->query->get('{{ p.wireName }}'){% if not p.required %} ?? null{% endif %},
+{% endfor %}
+{% if op.requestBodyType is not null and config.validationStrategy.name == 'NativeMethod' and config.validateServerRequest %}
+            body: $body,
+{% elseif op.requestBodyType is not null and config.validationStrategy.name == 'SymfonyConstraints' and config.validateServerRequest %}
+            body: $body,
+{% elseif op.requestBodyType is not null %}
+            body: {{ op.requestBodyType|split('\\')|last }}::fromRequestArray($request->toArray()),
+{% endif %}
+        );
+{% if op.returnType == 'void' %}
+        return new JsonResponse(null, {{ op.successCodes[0] ?? 204 }});
+{% else %}
+{% if config.validationStrategy.name == 'NativeMethod' and config.validateServerResponse %}
+        $this->validateNativeResponsePayload($result);
+{% elseif config.validationStrategy.name == 'SymfonyConstraints' and config.validateServerResponse %}
+        $this->validateSymfonyResponsePayload($result);
+{% endif %}
+{% if op.returnsArray %}
+        return new JsonResponse(array_map(static fn($item) => is_object($item) && method_exists($item, 'toResponseArray') ? $item->toResponseArray() : (is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : $item), $result), {{ op.successCodes[0] ?? 200 }});
+{% else %}
+        return new JsonResponse($result->toResponseArray(), {{ op.successCodes[0] ?? 200 }});
+{% endif %}
+{% endif %}
+    }

@@ -1,0 +1,97 @@
+{% import 'shared/api-operation-macros.php.twig' as operation %}
+{% import 'shared/payload-validation-macros.php.twig' as payloadValidation %}
+{% import 'shared/generation-meta-macros.php.twig' as generation %}
+<?php
+
+declare(strict_types=1);
+
+namespace {{ group.namespace }};
+
+{% if config.httpClient.value == 'symfony' %}
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+{% elseif config.httpClient.value == 'guzzle' %}
+use GuzzleHttp\ClientInterface;
+use GuzzleHttp\RequestOptions;
+{% elseif config.httpClient.value == 'psr18' %}
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestFactoryInterface;
+use Psr\Http\Message\StreamFactoryInterface;
+{% endif %}
+{% for use in useStatements %}
+{{ use }}
+{% endfor %}
+{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateClientRequest or config.validateClientResponse) %}
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Symfony\Component\Validator\Validation;
+{% endif %}
+
+{{ generation.renderFileHeader(generationMeta, '') }}
+final class {{ group.className }}Client implements {{ group.className }}ClientInterface
+{
+{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateClientRequest or config.validateClientResponse) %}
+    private readonly ValidatorInterface $validator;
+
+{% endif %}
+    public function __construct(
+        private readonly {% if config.httpClient.value == 'guzzle' or config.httpClient.value == 'psr18' %}ClientInterface{% else %}HttpClientInterface{% endif %} $httpClient,
+        private readonly string $baseUrl,
+{% if config.httpClient.value == 'psr18' %}
+        private readonly RequestFactoryInterface $requestFactory,
+        private readonly StreamFactoryInterface $streamFactory,
+{% endif %}
+{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateClientRequest or config.validateClientResponse) %}
+        ?ValidatorInterface $validator = null,
+{% endif %}
+    ) {
+{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateClientRequest or config.validateClientResponse) %}
+        $this->validator = $validator ?? Validation::createValidatorBuilder()
+            ->enableAttributeMapping()
+            ->getValidator();
+{% endif %}
+    }
+
+{% if config.validationStrategy.name == 'NativeMethod' and (config.validateClientRequest or config.validateClientResponse) %}
+{{ payloadValidation.renderNativePayloadMethod('    ') }}
+{% endif %}
+{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateClientRequest or config.validateClientResponse) %}
+{{ payloadValidation.renderSymfonyPayloadMethod('    ') }}
+{% endif %}
+
+{% for op in group.operations %}
+{% set signature = operation.renderSignature(op, false)|trim("\n\r") %}
+    {{ signature }}
+    {
+{% if config.validationStrategy.name == 'NativeMethod' and config.validateClientRequest %}
+{% for p in op.allParams() %}
+        $this->validateNativePayload(${{ p.name }});
+{% endfor %}
+{% if op.requestBodyType is not null %}
+        $this->validateNativeRequestPayload($body);
+{% endif %}
+{% elseif config.validationStrategy.name == 'SymfonyConstraints' and config.validateClientRequest %}
+{% for p in op.allParams() %}
+        $this->validateSymfonyPayload(${{ p.name }});
+{% endfor %}
+{% if op.requestBodyType is not null %}
+        $this->validateSymfonyRequestPayload($body);
+{% endif %}
+{% endif %}
+{% set hasQuery = op.queryParams is not empty %}
+{% if hasQuery %}
+        $query = array_filter([
+{% for p in op.queryParams %}
+            '{{ p.wireName }}' => ${{ p.name }},
+{% endfor %}
+        ], fn($v) => $v !== null);
+{% endif %}
+{% if config.httpClient.value == 'symfony' %}
+{% include 'client/operation/symfony.php.twig' %}
+{% elseif config.httpClient.value == 'guzzle' %}
+{% include 'client/operation/guzzle.php.twig' %}
+{% elseif config.httpClient.value == 'psr18' %}
+{% include 'client/operation/psr18.php.twig' %}
+{% endif %}
+    }
+
+{% endfor %}
+}

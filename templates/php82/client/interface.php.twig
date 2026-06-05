@@ -1,0 +1,21 @@
+{% import 'shared/api-operation-macros.php.twig' as operation %}
+{% import 'shared/generation-meta-macros.php.twig' as generation %}
+<?php
+
+declare(strict_types=1);
+
+namespace {{ group.namespace }};
+
+{% for use in useStatements %}
+{{ use }}
+{% endfor %}
+
+{{ generation.renderFileHeader(generationMeta, '') }}
+interface {{ group.className }}ClientInterface
+{
+{% for op in group.operations %}
+{{ operation.renderDocblock(op, '    ') }}{% set signature = operation.renderSignature(op, false)|trim("\n\r") %}
+    {{ signature }};
+
+{% endfor %}
+}

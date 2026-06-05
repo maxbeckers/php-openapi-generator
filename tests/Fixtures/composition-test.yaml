@@ -1,0 +1,124 @@
+openapi: "3.0.0"
+info:
+  title: Composition Test API
+  version: "1.0.0"
+
+paths: {}
+
+components:
+  schemas:
+
+    # --- Simple scalar (alias) ---
+    UserId:
+      type: string
+      format: uuid
+
+    # --- String enum ---
+    Color:
+      type: string
+      enum:
+        - red
+        - green
+        - blue
+
+    # --- Integer enum ---
+    Priority:
+      type: integer
+      enum:
+        - 1
+        - 2
+        - 3
+
+    # --- Plain object ---
+    Address:
+      type: object
+      required:
+        - street
+        - city
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+
+    # --- Object with inline nested object (triggers hoisting) ---
+    Order:
+      type: object
+      required:
+        - id
+        - address
+      properties:
+        id:
+          type: string
+        address:
+          type: object
+          required:
+            - line1
+          properties:
+            line1:
+              type: string
+            postcode:
+              type: string
+        notes:
+          type: string
+
+    # --- allOf single-ref extend (child class) ---
+    NamedAddress:
+      allOf:
+        - $ref: '#/components/schemas/Address'
+        - type: object
+          required:
+            - label
+          properties:
+            label:
+              type: string
+
+    # --- oneOf with discriminator (generates interface + implementors) ---
+    Animal:
+      oneOf:
+        - $ref: '#/components/schemas/Dog'
+        - $ref: '#/components/schemas/Cat'
+      discriminator:
+        propertyName: type
+        mapping:
+          dog: '#/components/schemas/Dog'
+          cat: '#/components/schemas/Cat'
+
+    Dog:
+      type: object
+      required:
+        - type
+        - breed
+      properties:
+        type:
+          type: string
+        breed:
+          type: string
+
+    Cat:
+      type: object
+      required:
+        - type
+        - indoor
+      properties:
+        type:
+          type: string
+        indoor:
+          type: boolean
+
+    # --- Circular reference: Node has optional self-ref ---
+    Node:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: string
+        parent:
+          $ref: '#/components/schemas/Node'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'

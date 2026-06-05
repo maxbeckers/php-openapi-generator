@@ -1,0 +1,209 @@
+openapi: "3.0.0"
+info:
+  title: Feature Test API
+  version: "1.0.0"
+  description: Fixture for testing generator features.
+
+servers:
+  - url: https://api.example.com/v1
+
+tags:
+  - name: orders
+    description: Order operations
+  - name: catalog
+    description: Product catalog operations
+
+paths:
+  /orders:
+    post:
+      summary: Create an order
+      operationId: createOrder
+      tags:
+        - orders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /catalog/items:
+    get:
+      summary: List catalog items
+      operationId: listCatalogItems
+      tags:
+        - catalog
+      responses:
+        "200":
+          description: List of items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CatalogItem'
+
+components:
+  schemas:
+
+    # --- Money: nested object used as a required non-nullable property ---
+    Money:
+      type: object
+      description: A monetary amount.
+      required:
+        - amount
+        - currency
+      properties:
+        amount:
+          type: integer
+          description: Amount in minor units.
+        currency:
+          type: string
+          description: ISO 4217 currency code.
+          minLength: 3
+          maxLength: 3
+
+    # --- OrderStatus: string enum ---
+    OrderStatus:
+      type: string
+      description: The order lifecycle status.
+      enum:
+        - pending
+        - confirmed
+        - shipped
+        - cancelled
+
+    # --- Priority: integer enum ---
+    Priority:
+      type: integer
+      description: Numeric priority level.
+      enum:
+        - 1
+        - 2
+        - 3
+
+    # --- DeprecatedSchema: schema with deprecated: true ---
+    DeprecatedSchema:
+      type: object
+      deprecated: true
+      description: This schema is deprecated.
+      required:
+        - id
+      properties:
+        id:
+          type: string
+        legacyField:
+          type: string
+          deprecated: true
+          description: This field is deprecated.
+
+    # --- Address: has deprecated property ---
+    Address:
+      type: object
+      required:
+        - street
+        - city
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+        oldZip:
+          type: string
+          deprecated: true
+          description: Use postalCode instead.
+        postalCode:
+          type: string
+
+    # --- Order: has nested Money (required non-nullable) + optional Address ---
+    Order:
+      type: object
+      required:
+        - id
+        - status
+        - total
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        total:
+          $ref: '#/components/schemas/Money'
+        shippingAddress:
+          $ref: '#/components/schemas/Address'
+        notes:
+          type: string
+          nullable: true
+
+    # --- CreateOrderRequest: used only by orders tag ---
+    CreateOrderRequest:
+      type: object
+      required:
+        - total
+      properties:
+        total:
+          $ref: '#/components/schemas/Money'
+        notes:
+          type: string
+          nullable: true
+
+    # --- ApiError: used only by orders tag ---
+    ApiError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+    # --- CatalogItem: used ONLY by catalog tag (not orders) ---
+    CatalogItem:
+      type: object
+      required:
+        - sku
+        - name
+      properties:
+        sku:
+          type: string
+        name:
+          type: string
+        price:
+          $ref: '#/components/schemas/Money'
+
+    # --- OrphanSchema: not referenced by ANY operation (should be pruned when filtering) ---
+    OrphanSchema:
+      type: object
+      properties:
+        value:
+          type: string
+
+    # --- PluginTestSchema: has x-trim and x-sensitive for plugin tests ---
+    PluginTestSchema:
+      type: object
+      required:
+        - name
+        - password
+      properties:
+        name:
+          type: string
+          x-trim: 30
+        password:
+          type: string
+          x-sensitive: true

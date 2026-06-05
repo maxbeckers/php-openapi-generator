@@ -1,0 +1,343 @@
+{%- set hasReadonly = config.phpReadonly -%}
+{%- import 'model/macros/validation.php.twig' as validation -%}
+{%- import 'shared/generation-meta-macros.php.twig' as generation -%}
+<?php
+
+declare(strict_types=1);
+
+namespace {{ schema.namespace }};
+
+{% for use in useStatements %}
+{{ use }}
+{% endfor %}
+{% if config.validationStrategy.name == 'SymfonyConstraints' %}
+use Symfony\Component\Validator\Constraints as Assert;
+{% endif %}
+
+{{ generation.renderFileHeader(generationMeta, '') }}
+{% if schema.schema.description is not null or schema.schema.deprecated %}
+/**
+{% if schema.schema.description is not null %} * {{ schema.schema.description|raw }}
+{% endif %}{% if schema.schema.deprecated %} * @deprecated
+{% endif %}
+ */
+{% endif %}
+{% if hasReadonly %}readonly {% endif %}class {{ schema.className }}{% if schema.parentClass is not null %} extends {{ schema.parentClass|split('\\')|last }}{% endif %}{% if schema.implementsInterfaces is not empty %} implements {{ schema.implementsInterfaces|map(i => i|split('\\')|last)|join(', ') }}{% endif %}
+
+{
+{% if config.generateConstructor %}
+    public function __construct(
+{% for prop in schema.properties %}
+{% if not (config.splitReadWriteDtos and prop.writeOnly) %}
+{% set validationAttributes = validation.renderValidationAttributes(config, prop, '        ')|trim("\n\r") %}
+{% if validationAttributes != '' %}
+
+{{ validationAttributes }}
+{% endif %}
+{% for attr in prop.extraAttributes %}
+        {{ attr }}
+{% endfor %}
+{% if prop.schema.deprecated %}
+        /**
+         * @deprecated
+         */
+{% elseif prop.description is not null and config.generatePhpDoc %}
+        /**
+         * {{ prop.description|raw }}
+         */
+{% endif %}
+{% if prop.phpType starts with '?' and prop.phpType|slice(1) ends with '[]' %}{% set declType = '?array' %}{% elseif prop.phpType ends with '[]' %}{% set declType = 'array' %}{% elseif prop.isCircular and not (prop.phpType starts with '?') %}{% set declType = '?' ~ prop.phpType %}{% else %}{% set declType = prop.phpType %}{% endif %}
+        public {{ declType }} ${{ prop.phpName }}{% if prop.isCircular and declType starts with '?' %} = null{% elseif prop.isCircular and declType == 'array' %} = []{% elseif not prop.required and prop.nullable and not prop.hasDefault %} = null{% elseif prop.hasDefault %} = {{ prop.default|php_export }}{% elseif not prop.required %} = null{% endif %},
+{% endif %}
+{% endfor %}
+    ) {
+{% if schema.parentClass is not null %}
+        parent::__construct();
+{% endif %}
+    }
+{% else %}
+{% for prop in schema.properties %}
+{% if not (config.splitReadWriteDtos and prop.writeOnly) %}
+{% if prop.phpType starts with '?' and prop.phpType|slice(1) ends with '[]' %}{% set declType = '?array' %}{% elseif prop.phpType ends with '[]' %}{% set declType = 'array' %}{% elseif prop.isCircular and not (prop.phpType starts with '?') %}{% set declType = '?' ~ prop.phpType %}{% else %}{% set declType = prop.phpType %}{% endif %}
+{% set validationAttributes = validation.renderValidationAttributes(config, prop, '    ')|trim("\n\r") %}
+{% if validationAttributes != '' %}
+
+{{ validationAttributes }}
+{% endif %}
+{% for attr in prop.extraAttributes %}
+    {{ attr }}
+{% endfor %}
+{% if prop.schema.deprecated %}
+    /**
+     * @deprecated
+     */
+{% elseif prop.description is not null and config.generatePhpDoc %}
+    /**
+     * {{ prop.description|raw }}
+     */
+{% endif %}
+    public {{ declType }} ${{ prop.phpName }}{% if prop.isCircular and declType starts with '?' %} = null{% elseif prop.isCircular and declType == 'array' %} = []{% elseif not prop.required and prop.nullable and not prop.hasDefault %} = null{% elseif prop.hasDefault %} = {{ prop.default|php_export }}{% elseif not prop.required %} = null{% endif %};
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if config.generateFromArray %}
+    public static function fromArray(array $data): {{ schema.className }}
+    {
+{% for prop in schema.properties %}
+{% if not (config.splitReadWriteDtos and prop.writeOnly) %}
+{% if prop.extraCode is not null %}
+        {{ prop.extraCode }}
+{% endif %}
+{% endif %}
+{% endfor %}
+        return new {{ schema.className }}(
+{% for prop in schema.properties %}
+{% if not (config.splitReadWriteDtos and prop.writeOnly) %}
+{# Determine whether this is an array-of-objects, nullable-array-of-objects, or circular object ref. #}
+{% set isNullableArray = prop.phpType starts with '?' and prop.phpType|slice(1) ends with '[]' and prop.phpType|slice(1) != '[]' %}
+{% set isArray = not isNullableArray and prop.phpType ends with '[]' and prop.phpType != 'array' %}
+{% set isCircularObject = prop.isCircular and not isArray and not isNullableArray and prop.phpType != 'array' %}
+{% set bareType = prop.phpType starts with '?' ? prop.phpType|slice(1) : prop.phpType %}
+{% set scalars = ['string', 'int', 'float', 'bool', 'mixed', 'array'] %}
+{% set isObjectProp = bareType not in scalars and not isArray and not isNullableArray and not isCircularObject %}
+{% if isArray %}
+{% set elementType = prop.phpType|slice(0, prop.phpType|length - 2) %}
+            {{ prop.phpName }}: array_map(static fn($item) => {{ elementType }}::fromArray($item), $data['{{ prop.wireName }}'] ?? []),
+{% elseif isNullableArray %}
+{% set elementType = prop.phpType|slice(1, prop.phpType|length - 3) %}
+            {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? array_map(static fn($item) => {{ elementType }}::fromArray($item), $data['{{ prop.wireName }}']) : null,
+{% elseif isCircularObject %}
+{% set circularType = prop.phpType starts with '?' ? prop.phpType|slice(1) : prop.phpType %}
+            {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? {{ circularType }}::fromArray($data['{{ prop.wireName }}']) : null,
+{% elseif isObjectProp and not (prop.phpType starts with '?') %}
+            {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? {{ prop.phpType }}::fromArray($data['{{ prop.wireName }}']) : {{ prop.phpType }}::fromArray([]),
+{% elseif isObjectProp %}
+            {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? {{ bareType }}::fromArray($data['{{ prop.wireName }}']) : null,
+{% elseif prop.nullable and prop.phpType != 'string' and prop.phpType != 'int' and prop.phpType != 'float' and prop.phpType != 'bool' and prop.phpType != 'mixed' and prop.phpType != 'array' and not (prop.phpType starts with '?') %}
+            {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? {{ prop.phpType }}::fromArray($data['{{ prop.wireName }}']) : null,
+{% else %}
+            {{ prop.phpName }}: $data['{{ prop.wireName }}'] ?? {% if prop.hasDefault %}{{ prop.default|php_export }}{% elseif prop.nullable %}null{% elseif prop.phpType == 'int' %}0{% elseif prop.phpType == 'float' %}0.0{% elseif prop.phpType == 'bool' %}false{% elseif prop.phpType == 'string' %}''{% else %}null{% endif %},
+{% endif %}
+{% endif %}
+{% endfor %}
+        );
+    }
+
+    public static function fromRequestArray(array $data): {{ schema.className }}
+    {
+{% for prop in schema.properties %}
+{% if prop.readOnly %}
+        unset($data['{{ prop.wireName }}']);
+{% endif %}
+{% endfor %}
+        return {{ schema.className }}::fromArray($data);
+    }
+
+    public static function fromResponseArray(array $data): {{ schema.className }}
+    {
+{% for prop in schema.properties %}
+{% if prop.writeOnly %}
+        unset($data['{{ prop.wireName }}']);
+{% endif %}
+{% endfor %}
+        return {{ schema.className }}::fromArray($data);
+    }
+{% endif %}
+
+{% if config.generateToArray %}
+    public function toArray(): array
+    {
+{% if schema.parentClass is not null %}
+        $data = parent::toArray();
+{% else %}
+        $data = [];
+{% endif %}
+{% for prop in schema.properties %}
+{% if not (config.splitReadWriteDtos and prop.readOnly) %}
+{% set isNullableArray = prop.phpType starts with '?' and prop.phpType|slice(1) ends with '[]' and prop.phpType|slice(1) != '[]' %}
+{% set isArray = not isNullableArray and prop.phpType ends with '[]' and prop.phpType != 'array' %}
+{% set bareType = prop.phpType starts with '?' ? prop.phpType|slice(1) : prop.phpType %}
+{% set scalars = ['string', 'int', 'float', 'bool', 'mixed', 'array'] %}
+{% set isObjectProp = bareType not in scalars and not isArray and not isNullableArray %}
+{% set isPhpNullable = prop.phpType starts with '?' %}
+{% if config.omitNullsInToArray and isPhpNullable %}
+        if ($this->{{ prop.phpName }} !== null) {
+{% if isArray or isNullableArray %}
+            $data['{{ prop.wireName }}'] = array_map(static fn($item) => $item->toArray(), $this->{{ prop.phpName }});
+{% elseif isObjectProp %}
+            $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}->toArray();
+{% else %}
+            $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }};
+{% endif %}
+        }
+{% else %}
+{% if isArray %}
+        $data['{{ prop.wireName }}'] = array_map(static fn($item) => $item->toArray(), $this->{{ prop.phpName }});
+{% elseif isNullableArray %}
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }} !== null ? array_map(static fn($item) => $item->toArray(), $this->{{ prop.phpName }}) : null;
+{% elseif isObjectProp and isPhpNullable %}
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}?->toArray();
+{% elseif isObjectProp %}
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}->toArray();
+{% else %}
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }};
+{% endif %}
+{% endif %}
+{% endif %}
+{% endfor %}
+
+        return $data;
+    }
+
+    public function toRequestArray(): array
+    {
+        $data = $this->toArray();
+{% for prop in schema.properties %}
+{% if prop.readOnly %}
+        unset($data['{{ prop.wireName }}']);
+{% endif %}
+{% endfor %}
+
+        return $data;
+    }
+
+    public function toResponseArray(): array
+    {
+        $data = $this->toArray();
+{% for prop in schema.properties %}
+{% if prop.writeOnly %}
+        unset($data['{{ prop.wireName }}']);
+{% endif %}
+{% endfor %}
+
+        return $data;
+    }
+{% endif %}
+{% if config.validationStrategy.name == 'NativeMethod' %}
+
+    /**
+     * @return array<string>
+     */
+    public function validate(): array
+    {
+        $errors = [];
+{% for prop in schema.properties %}
+{% if not (config.splitReadWriteDtos and prop.writeOnly) %}
+{% set nativeChecks = validation.renderNativeValidationChecks(config, prop, '        ')|trim("\n\r") %}
+{% if nativeChecks != '' %}
+{{ nativeChecks }}
+{% endif %}
+{% endif %}
+{% endfor %}
+
+        return $errors;
+    }
+
+    /**
+     * @return array<string>
+     */
+    public function validateForRequest(): array
+    {
+        $errors = [];
+{% for prop in schema.properties %}
+{% set nativeChecks = validation.renderNativeValidationChecks(config, prop, '        ', 'request')|trim("\n\r") %}
+{% if nativeChecks != '' %}
+{{ nativeChecks }}
+{% endif %}
+{% endfor %}
+
+        return $errors;
+    }
+
+    /**
+     * @return array<string>
+     */
+    public function validateForResponse(): array
+    {
+        $errors = [];
+{% for prop in schema.properties %}
+{% set nativeChecks = validation.renderNativeValidationChecks(config, prop, '        ', 'response')|trim("\n\r") %}
+{% if nativeChecks != '' %}
+{{ nativeChecks }}
+{% endif %}
+{% endfor %}
+
+        return $errors;
+    }
+
+    public function validateOrThrow(): void
+    {
+        $errors = $this->validate();
+        if ($errors !== []) {
+            throw new \InvalidArgumentException(implode('; ', $errors));
+        }
+    }
+
+    public function validateOrThrowForRequest(): void
+    {
+        $errors = $this->validateForRequest();
+        if ($errors !== []) {
+            throw new \InvalidArgumentException(implode('; ', $errors));
+        }
+    }
+
+    public function validateOrThrowForResponse(): void
+    {
+        $errors = $this->validateForResponse();
+        if ($errors !== []) {
+            throw new \InvalidArgumentException(implode('; ', $errors));
+        }
+    }
+{% endif %}
+{% if config.validationStrategy.name == 'LaravelValidation' %}
+
+    /**
+     * Returns Laravel validation rules for this model.
+     *
+     * @return array<string, string|array<string>>
+     */
+    public static function rules(): array
+    {
+        return [
+{% for prop in schema.properties %}
+{% if not (config.splitReadWriteDtos and prop.writeOnly) %}
+            {{ (prop.wireName)|php_export }} => {{ validation.renderLaravelValidationRules(config, prop)|trim("\n\r")|raw }},
+{% endif %}
+{% endfor %}
+        ];
+    }
+
+    /**
+     * Returns Laravel validation rules for incoming request payloads.
+     *
+     * @return array<string, string|array<string>>
+     */
+    public static function requestRules(): array
+    {
+        return [
+{% for prop in schema.properties %}
+{% if not (config.splitReadWriteDtos and prop.writeOnly) and not prop.readOnly %}
+            {{ (prop.wireName)|php_export }} => {{ validation.renderLaravelValidationRules(config, prop, 'request')|trim("\n\r")|raw }},
+{% endif %}
+{% endfor %}
+        ];
+    }
+
+    /**
+     * Returns Laravel validation rules for outgoing response payloads.
+     *
+     * @return array<string, string|array<string>>
+     */
+    public static function responseRules(): array
+    {
+        return [
+{% for prop in schema.properties %}
+{% if not (config.splitReadWriteDtos and prop.writeOnly) and not prop.writeOnly %}
+            {{ (prop.wireName)|php_export }} => {{ validation.renderLaravelValidationRules(config, prop, 'response')|trim("\n\r")|raw }},
+{% endif %}
+{% endfor %}
+        ];
+    }
+{% endif %}
+}

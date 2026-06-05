@@ -1,0 +1,184 @@
+{%- macro renderSymfonyGroups(prop) -%}
+{% if prop.readOnly %}
+['Default', 'response']
+{% elseif prop.writeOnly %}
+['Default', 'request']
+{% else %}
+['Default', 'request', 'response']
+{% endif %}
+{%- endmacro -%}
+
+{%- macro renderValidationAttributes(config, prop, indent) -%}
+{% if config.validationStrategy.name == 'SymfonyConstraints' and prop.schema is not null %}
+{% set isStringType = prop.schema.type == 'string' %}
+{% set isNumericType = prop.schema.type == 'number' or prop.schema.type == 'integer' %}
+{% set isArrayType = prop.schema.type == 'array' %}
+{% if prop.required and not prop.nullable %}
+{{ indent }}#[Assert\NotNull(groups: {{ _self.renderSymfonyGroups(prop)|trim }})]
+{% endif %}
+{% if isStringType and prop.required and not prop.nullable and prop.schema.minLength is not null and prop.schema.minLength >= 1 %}
+{{ indent }}#[Assert\NotBlank(groups: {{ _self.renderSymfonyGroups(prop)|trim }})]
+{% endif %}
+{% if isStringType and (prop.schema.minLength is not null or prop.schema.maxLength is not null) %}
+{{ indent }}#[Assert\Length({% if prop.schema.minLength is not null %}min: {{ prop.schema.minLength }}{% endif %}{% if prop.schema.minLength is not null and prop.schema.maxLength is not null %}, {% endif %}{% if prop.schema.maxLength is not null %}max: {{ prop.schema.maxLength }}{% endif %}{% if prop.schema.minLength is not null or prop.schema.maxLength is not null %}, {% endif %}groups: {{ _self.renderSymfonyGroups(prop)|trim }})]
+{% endif %}
+{% if isStringType and prop.schema.pattern is not null %}
+{{ indent }}#[Assert\Regex(pattern: {{ prop.schema.pattern|php_export }}, groups: {{ _self.renderSymfonyGroups(prop)|trim }})]
+{% endif %}
+{% if isNumericType and (prop.schema.minimum is not null or prop.schema.maximum is not null) %}
+{{ indent }}#[Assert\Range({% if prop.schema.minimum is not null %}min: {{ prop.schema.minimum }}{% endif %}{% if prop.schema.minimum is not null and prop.schema.maximum is not null %}, {% endif %}{% if prop.schema.maximum is not null %}max: {{ prop.schema.maximum }}{% endif %}{% if prop.schema.minimum is not null or prop.schema.maximum is not null %}, {% endif %}groups: {{ _self.renderSymfonyGroups(prop)|trim }})]
+{% endif %}
+{% if isNumericType and prop.schema.multipleOf is not null %}
+{{ indent }}#[Assert\DivisibleBy(value: {{ prop.schema.multipleOf }}, groups: {{ _self.renderSymfonyGroups(prop)|trim }})]
+{% endif %}
+{% if isArrayType and (prop.schema.minItems is not null or prop.schema.maxItems is not null) %}
+{{ indent }}#[Assert\Count({% if prop.schema.minItems is not null %}min: {{ prop.schema.minItems }}{% endif %}{% if prop.schema.minItems is not null and prop.schema.maxItems is not null %}, {% endif %}{% if prop.schema.maxItems is not null %}max: {{ prop.schema.maxItems }}{% endif %}{% if prop.schema.minItems is not null or prop.schema.maxItems is not null %}, {% endif %}groups: {{ _self.renderSymfonyGroups(prop)|trim }})]
+{% endif %}
+{% if prop.schema.enum is not null and prop.schema.enum is not empty %}
+{{ indent }}#[Assert\Choice(choices: {{ prop.schema.enum|php_export }}, groups: {{ _self.renderSymfonyGroups(prop)|trim }})]
+{% endif %}
+{% endif %}
+{%- endmacro -%}
+
+{%- macro renderNativeValidationChecks(config, prop, indent, direction = 'all') -%}
+{% if config.validationStrategy.name == 'NativeMethod' and prop.schema is not null %}
+{% if not ((direction == 'request' and prop.readOnly) or (direction == 'response' and prop.writeOnly)) %}
+{% set isStringType = prop.schema.type == 'string' %}
+{% set isNumericType = prop.schema.type == 'number' or prop.schema.type == 'integer' %}
+{% set isArrayType = prop.schema.type == 'array' %}
+{% if prop.required and not prop.nullable %}
+{{ indent }}if ($this->{{ prop.phpName }} === null) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must not be null.';
+{{ indent }}}
+{% endif %}
+{% if isStringType and prop.required and not prop.nullable and prop.schema.minLength is not null and prop.schema.minLength >= 1 %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && trim($this->{{ prop.phpName }}) === '') {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must not be blank.';
+{{ indent }}}
+{% endif %}
+{% if isStringType and prop.schema.minLength is not null %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && mb_strlen($this->{{ prop.phpName }}) < {{ prop.schema.minLength }}) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must have length >= {{ prop.schema.minLength }}.';
+{{ indent }}}
+{% endif %}
+{% if isStringType and prop.schema.maxLength is not null %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && mb_strlen($this->{{ prop.phpName }}) > {{ prop.schema.maxLength }}) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must have length <= {{ prop.schema.maxLength }}.';
+{{ indent }}}
+{% endif %}
+{% if isStringType and prop.schema.pattern is not null %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && preg_match({{ ('~' ~ (prop.schema.pattern|replace({'~': '\\~'})) ~ '~u')|php_export }}, $this->{{ prop.phpName }}) !== 1) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must match pattern {{ prop.schema.pattern|replace({"'": "\\'"}) }}.';
+{{ indent }}}
+{% endif %}
+{% if isNumericType and prop.schema.minimum is not null %}
+{% if prop.schema.exclusiveMinimum %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && $this->{{ prop.phpName }} <= {{ prop.schema.minimum }}) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must be > {{ prop.schema.minimum }}.';
+{{ indent }}}
+{% else %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && $this->{{ prop.phpName }} < {{ prop.schema.minimum }}) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must be >= {{ prop.schema.minimum }}.';
+{{ indent }}}
+{% endif %}
+{% endif %}
+{% if isNumericType and prop.schema.maximum is not null %}
+{% if prop.schema.exclusiveMaximum %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && $this->{{ prop.phpName }} >= {{ prop.schema.maximum }}) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must be < {{ prop.schema.maximum }}.';
+{{ indent }}}
+{% else %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && $this->{{ prop.phpName }} > {{ prop.schema.maximum }}) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must be <= {{ prop.schema.maximum }}.';
+{{ indent }}}
+{% endif %}
+{% endif %}
+{% if isNumericType and prop.schema.multipleOf is not null %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && fmod((float) $this->{{ prop.phpName }}, (float) {{ prop.schema.multipleOf }}) !== 0.0) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must be a multiple of {{ prop.schema.multipleOf }}.';
+{{ indent }}}
+{% endif %}
+{% if isArrayType and prop.schema.minItems is not null %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && count($this->{{ prop.phpName }}) < {{ prop.schema.minItems }}) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must contain at least {{ prop.schema.minItems }} item(s).';
+{{ indent }}}
+{% endif %}
+{% if isArrayType and prop.schema.maxItems is not null %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && count($this->{{ prop.phpName }}) > {{ prop.schema.maxItems }}) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must contain at most {{ prop.schema.maxItems }} item(s).';
+{{ indent }}}
+{% endif %}
+{% if prop.schema.enum is not null and prop.schema.enum is not empty %}
+{{ indent }}if ($this->{{ prop.phpName }} !== null && !in_array($this->{{ prop.phpName }}, {{ prop.schema.enum|php_export }}, true)) {
+{{ indent }}    $errors[] = '{{ prop.phpName }} must be one of: {{ prop.schema.enum|join(', ')|replace({"'": "\\'"}) }}.';
+{{ indent }}}
+{% endif %}
+{% endif %}
+{% endif %}
+{%- endmacro -%}
+
+{%- macro renderLaravelValidationRules(config, prop, direction = 'all') -%}
+{% if config.validationStrategy.name == 'LaravelValidation' and prop.schema is not null %}
+{% if not ((direction == 'request' and prop.readOnly) or (direction == 'response' and prop.writeOnly)) %}
+{% set isStringType = prop.schema.type == 'string' %}
+{% set isNumericType = prop.schema.type == 'number' or prop.schema.type == 'integer' %}
+{% set isArrayType = prop.schema.type == 'array' %}
+{% set rules = [] %}
+{% if prop.required and not prop.nullable %}
+{% set rules = rules|merge(['required']) %}
+{% else %}
+{% set rules = rules|merge(['nullable']) %}
+{% endif %}
+{% if isStringType %}
+{% set rules = rules|merge(['string']) %}
+{% endif %}
+{% if isNumericType and prop.schema.type == 'integer' %}
+{% set rules = rules|merge(['integer']) %}
+{% endif %}
+{% if isNumericType and prop.schema.type == 'number' %}
+{% set rules = rules|merge(['numeric']) %}
+{% endif %}
+{% if isArrayType %}
+{% set rules = rules|merge(['array']) %}
+{% endif %}
+{% if isStringType and prop.schema.minLength is not null %}
+{% set rules = rules|merge(['min:' ~ prop.schema.minLength]) %}
+{% endif %}
+{% if isStringType and prop.schema.maxLength is not null %}
+{% set rules = rules|merge(['max:' ~ prop.schema.maxLength]) %}
+{% endif %}
+{% if isNumericType and prop.schema.minimum is not null %}
+{% if prop.schema.exclusiveMinimum %}
+{% set rules = rules|merge(['gt:' ~ prop.schema.minimum]) %}
+{% else %}
+{% set rules = rules|merge(['gte:' ~ prop.schema.minimum]) %}
+{% endif %}
+{% endif %}
+{% if isNumericType and prop.schema.maximum is not null %}
+{% if prop.schema.exclusiveMaximum %}
+{% set rules = rules|merge(['lt:' ~ prop.schema.maximum]) %}
+{% else %}
+{% set rules = rules|merge(['lte:' ~ prop.schema.maximum]) %}
+{% endif %}
+{% endif %}
+{% if isStringType and prop.schema.pattern is not null %}
+{% set rules = rules|merge(['regex:' ~ prop.schema.pattern]) %}
+{% endif %}
+{% if isNumericType and prop.schema.multipleOf is not null %}
+{% set rules = rules|merge(['multiple_of:' ~ prop.schema.multipleOf]) %}
+{% endif %}
+{% if isArrayType and prop.schema.minItems is not null %}
+{% set rules = rules|merge(['min:' ~ prop.schema.minItems]) %}
+{% endif %}
+{% if isArrayType and prop.schema.maxItems is not null %}
+{% set rules = rules|merge(['max:' ~ prop.schema.maxItems]) %}
+{% endif %}
+{% if prop.schema.enum is not null and prop.schema.enum is not empty %}
+{% set rules = rules|merge(['in:' ~ prop.schema.enum|join(',')]) %}
+{% endif %}
+[{{ rules|map(rule => rule|php_export)|join(', ') }}]
+{% else %}
+[]
+{% endif %}
+{% endif %}
+{%- endmacro -%}

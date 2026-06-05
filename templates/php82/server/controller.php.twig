@@ -1,0 +1,67 @@
+{% import 'shared/api-operation-macros.php.twig' as operation %}
+{% import 'shared/payload-validation-macros.php.twig' as payloadValidation %}
+{% import 'shared/generation-meta-macros.php.twig' as generation %}
+<?php
+
+declare(strict_types=1);
+
+namespace {{ group.namespace }};
+
+{% if config.frameworkTarget.value == 'symfony' %}
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\Routing\Attribute\Route;
+{% endif %}
+{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateServerRequest or config.validateServerResponse) %}
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Symfony\Component\Validator\Validation;
+{% endif %}
+{% for use in useStatements %}
+{{ use }}
+{% endfor %}
+
+{{ generation.renderFileHeader(generationMeta, '') }}
+abstract class {{ group.className }}Controller implements {{ group.className }}Interface
+{
+{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateServerRequest or config.validateServerResponse) %}
+    private readonly ValidatorInterface $validator;
+
+    public function __construct(?ValidatorInterface $validator = null)
+    {
+        $this->validator = $validator ?? Validation::createValidatorBuilder()
+            ->enableAttributeMapping()
+            ->getValidator();
+    }
+
+{% endif %}
+{% if config.validationStrategy.name == 'NativeMethod' and (config.validateServerRequest or config.validateServerResponse) %}
+{{ payloadValidation.renderNativePayloadMethod('    ') }}
+
+{% endif %}
+{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateServerRequest or config.validateServerResponse) %}
+{{ payloadValidation.renderSymfonyPayloadMethod('    ') }}
+
+{% endif %}
+{% if config.validationStrategy.name == 'LaravelValidation' and (config.validateServerRequest or config.validateServerResponse) %}
+{{ payloadValidation.renderLaravelPayloadMethod('    ') }}
+
+{% endif %}
+{% for op in group.operations %}
+{% if config.frameworkTarget.value == 'symfony' %}
+{% include 'server/controller/symfony-action.php.twig' %}
+
+{% elseif config.frameworkTarget.value == 'laravel' %}
+{% include 'server/controller/laravel-action.php.twig' %}
+
+{% endif %}
+{% endfor %}
+
+{% for op in group.operations %}
+{% set signature = operation.renderSignature(op, false)|trim("\n\r") %}
+    {{ signature }}
+    {
+        throw new \BadMethodCallException('Override {{ op.operationId }}() or {{ op.operationId }}Action() to implement this operation.');
+    }
+
+{% endfor %}
+}

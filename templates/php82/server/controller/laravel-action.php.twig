@@ -1,0 +1,53 @@
+    public function {{ op.operationId }}Action(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+{% if op.requestBodyType is not null and config.validationStrategy.name == 'NativeMethod' and config.validateServerRequest %}
+        $body = {{ op.requestBodyType|split('\\')|last }}::fromRequestArray($request->all());
+        $this->validateNativeRequestPayload($body);
+{% elseif op.requestBodyType is not null and config.validationStrategy.name == 'SymfonyConstraints' and config.validateServerRequest %}
+        $body = {{ op.requestBodyType|split('\\')|last }}::fromRequestArray($request->all());
+        $this->validateSymfonyRequestPayload($body);
+{% elseif op.requestBodyType is not null and config.validationStrategy.name == 'LaravelValidation' and config.validateServerRequest %}
+        $body = {{ op.requestBodyType|split('\\')|last }}::fromRequestArray($request->all());
+        $this->validateLaravelRequestPayload($body);
+{% endif %}
+{% if op.returnType == 'void' %}
+        $this->{{ op.operationId }}(
+{% else %}
+        $result = $this->{{ op.operationId }}(
+{% endif %}
+{% for p in op.pathParams %}
+            {{ p.name }}: $request->route('{{ p.wireName }}'),
+{% endfor %}
+{% for p in op.queryParams %}
+            {{ p.name }}: $request->query('{{ p.wireName }}'),
+{% endfor %}
+{% if op.requestBodyType is not null and config.validationStrategy.name == 'NativeMethod' and config.validateServerRequest %}
+            body: $body,
+{% elseif op.requestBodyType is not null and config.validationStrategy.name == 'SymfonyConstraints' and config.validateServerRequest %}
+            body: $body,
+{% elseif op.requestBodyType is not null and config.validationStrategy.name == 'LaravelValidation' and config.validateServerRequest %}
+            body: $body,
+{% elseif op.requestBodyType is not null %}
+            body: {{ op.requestBodyType|split('\\')|last }}::fromRequestArray($request->all()),
+{% endif %}
+        );
+{% if op.returnType == 'void' %}
+
+        return response()->json(null, {{ op.successCodes[0] ?? 204 }});
+{% else %}
+{% if config.validationStrategy.name == 'NativeMethod' and config.validateServerResponse %}
+        $this->validateNativeResponsePayload($result);
+{% elseif config.validationStrategy.name == 'SymfonyConstraints' and config.validateServerResponse %}
+        $this->validateSymfonyResponsePayload($result);
+{% elseif config.validationStrategy.name == 'LaravelValidation' and config.validateServerResponse %}
+        $this->validateLaravelResponsePayload($result);
+{% endif %}
+{% if op.returnsArray %}
+
+        return response()->json(array_map(static fn($item) => is_object($item) && method_exists($item, 'toResponseArray') ? $item->toResponseArray() : (is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : $item), $result), {{ op.successCodes[0] ?? 200 }});
+{% else %}
+
+        return response()->json($result->toResponseArray(), {{ op.successCodes[0] ?? 200 }});
+{% endif %}
+{% endif %}
+    }

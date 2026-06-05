@@ -1,0 +1,34 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Try to find the autoloader
+$candidates = [
+    __DIR__ . '/../vendor/autoload.php',   // installed as root
+    __DIR__ . '/../../../autoload.php',    // installed as a library via composer
+];
+
+$autoloaderFound = false;
+foreach ($candidates as $candidate) {
+    if (file_exists($candidate)) {
+        require_once $candidate;
+        $autoloaderFound = true;
+        break;
+    }
+}
+
+if (!$autoloaderFound) {
+    fwrite(STDERR, "Autoloader not found. Run `composer install` first.\n");
+    exit(1);
+}
+
+use MaxBeckers\OpenApiGenerator\Command\CleanCommand;
+use MaxBeckers\OpenApiGenerator\Command\GenerateCommand;
+use Symfony\Component\Console\Application;
+
+$application = new Application('openapi-gen', '1.0.0');
+$application->add(new GenerateCommand());
+$application->add(new CleanCommand());
+$application->setDefaultCommand('generate');
+$application->run();

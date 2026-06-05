@@ -1,0 +1,29 @@
+{% import 'shared/generation-meta-macros.php.twig' as generation %}
+<?php
+
+declare(strict_types=1);
+
+namespace {{ schema.namespace }};
+
+{% for use in useStatements %}
+{{ use }}
+{% endfor %}
+
+{{ generation.renderFileHeader(generationMeta, '') }}
+
+{% if schema.schema.description is not null or schema.schema.deprecated %}
+/**
+{% if schema.schema.description is not null %} * {{ schema.schema.description|raw }}
+{% endif %}{% if schema.schema.deprecated %} * @deprecated
+{% endif %} */
+{% endif %}
+interface {{ schema.className }}
+{
+{% if schema.schema.discriminator is not null %}
+    /**
+     * Create an instance from array data using the discriminator property "{{ schema.schema.discriminator.propertyName }}".
+     */
+    public static function fromArray(array $data): {{ schema.className }};
+
+{% endif %}
+}

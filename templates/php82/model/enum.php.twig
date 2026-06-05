@@ -1,0 +1,42 @@
+{% import 'shared/generation-meta-macros.php.twig' as generation %}
+<?php
+
+declare(strict_types=1);
+
+namespace {{ schema.namespace }};
+
+{{ generation.renderFileHeader(generationMeta, '') }}
+{% if schema.schema.description is not null or schema.schema.deprecated %}
+/**
+{% if schema.schema.description is not null %} * {{ schema.schema.description|raw }}
+{% endif %}{% if schema.schema.deprecated %} * @deprecated
+{% endif %}
+ */
+{% endif %}
+enum {{ schema.className }}: {% if isIntEnum %}int{% else %}string{% endif %}
+{
+{% for case in enumCases %}
+    case {{ case.caseName }} = {% if isIntEnum %}{{ case.value }}{% else %}{{ case.value|php_export }}{% endif %};
+{% endfor %}
+
+    public static function fromArray(mixed $value): {% if config.enumUnknownDefault.value == 'throw' %}{{ schema.className }}{% else %}?{{ schema.className }}{% endif %}
+    {
+{% if config.enumUnknownDefault.value == 'throw' %}
+        return {{ schema.className }}::from({% if isIntEnum %}(int) $value{% else %}(string) $value{% endif %});
+{% elseif config.enumUnknownDefault.value == 'raw' %}
+        $case = {{ schema.className }}::tryFrom({% if isIntEnum %}(int) $value{% else %}(string) $value{% endif %});
+        if ($case === null) {
+            return {{ schema.className }}::cases()[0];
+        }
+
+        return $case;
+{% else %}
+        return {{ schema.className }}::tryFrom({% if isIntEnum %}(int) $value{% else %}(string) $value{% endif %});
+{% endif %}
+    }
+
+    public function toArray(): {% if isIntEnum %}int{% else %}string{% endif %}
+    {
+        return $this->value;
+    }
+}

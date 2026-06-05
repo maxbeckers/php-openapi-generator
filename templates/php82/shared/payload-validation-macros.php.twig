@@ -1,0 +1,259 @@
+{% macro renderNativePayloadMethod(indent) %}
+{{ indent }}private function validateNativePayload(mixed $value): void
+{{ indent }}{
+{{ indent }}    if (is_array($value)) {
+{{ indent }}        foreach ($value as $item) {
+{{ indent }}            $this->validateNativePayload($item);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    if (is_object($value) && method_exists($value, 'validateOrThrow')) {
+{{ indent }}        $value->validateOrThrow();
+{{ indent }}    }
+{{ indent }}}
+
+{{ indent }}private function validateNativeRequestPayload(mixed $value): void
+{{ indent }}{
+{{ indent }}    if (is_array($value)) {
+{{ indent }}        foreach ($value as $item) {
+{{ indent }}            $this->validateNativeRequestPayload($item);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    if (is_object($value)) {
+{{ indent }}        if (method_exists($value, 'validateOrThrowForRequest')) {
+{{ indent }}            $value->validateOrThrowForRequest();
+{{ indent }}
+{{ indent }}            return;
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        if (method_exists($value, 'validateOrThrow')) {
+{{ indent }}            $value->validateOrThrow();
+{{ indent }}        }
+{{ indent }}    }
+{{ indent }}}
+
+{{ indent }}private function validateNativeResponsePayload(mixed $value): void
+{{ indent }}{
+{{ indent }}    if (is_array($value)) {
+{{ indent }}        foreach ($value as $item) {
+{{ indent }}            $this->validateNativeResponsePayload($item);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    if (is_object($value)) {
+{{ indent }}        if (method_exists($value, 'validateOrThrowForResponse')) {
+{{ indent }}            $value->validateOrThrowForResponse();
+{{ indent }}
+{{ indent }}            return;
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        if (method_exists($value, 'validateOrThrow')) {
+{{ indent }}            $value->validateOrThrow();
+{{ indent }}        }
+{{ indent }}    }
+{{ indent }}}
+{% endmacro %}
+
+{% macro renderSymfonyPayloadMethod(indent) %}
+{{ indent }}private function validateSymfonyPayload(mixed $value, ?\SplObjectStorage $visited = null): void
+{{ indent }}{
+{{ indent }}    if (!is_array($value) && !is_object($value)) {
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    $visited ??= new \SplObjectStorage();
+{{ indent }}
+{{ indent }}    if (is_object($value)) {
+{{ indent }}        if ($visited->contains($value)) {
+{{ indent }}            return;
+{{ indent }}        }
+{{ indent }}        $visited->attach($value);
+{{ indent }}
+{{ indent }}        $violations = $this->validator->validate($value);
+{{ indent }}        if (count($violations) > 0) {
+{{ indent }}            throw new \InvalidArgumentException((string) $violations);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        foreach (get_object_vars($value) as $propertyValue) {
+{{ indent }}            $this->validateSymfonyPayload($propertyValue, $visited);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    foreach ($value as $item) {
+{{ indent }}        $this->validateSymfonyPayload($item, $visited);
+{{ indent }}    }
+{{ indent }}}
+
+{{ indent }}private function validateSymfonyRequestPayload(mixed $value, ?\SplObjectStorage $visited = null): void
+{{ indent }}{
+{{ indent }}    if (!is_array($value) && !is_object($value)) {
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    $visited ??= new \SplObjectStorage();
+{{ indent }}
+{{ indent }}    if (is_object($value)) {
+{{ indent }}        if ($visited->contains($value)) {
+{{ indent }}            return;
+{{ indent }}        }
+{{ indent }}        $visited->attach($value);
+{{ indent }}
+{{ indent }}        $violations = $this->validator->validate($value, groups: ['request']);
+{{ indent }}        if (count($violations) > 0) {
+{{ indent }}            throw new \InvalidArgumentException((string) $violations);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        foreach (get_object_vars($value) as $propertyValue) {
+{{ indent }}            $this->validateSymfonyRequestPayload($propertyValue, $visited);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    foreach ($value as $item) {
+{{ indent }}        $this->validateSymfonyRequestPayload($item, $visited);
+{{ indent }}    }
+{{ indent }}}
+
+{{ indent }}private function validateSymfonyResponsePayload(mixed $value, ?\SplObjectStorage $visited = null): void
+{{ indent }}{
+{{ indent }}    if (!is_array($value) && !is_object($value)) {
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    $visited ??= new \SplObjectStorage();
+{{ indent }}
+{{ indent }}    if (is_object($value)) {
+{{ indent }}        if ($visited->contains($value)) {
+{{ indent }}            return;
+{{ indent }}        }
+{{ indent }}        $visited->attach($value);
+{{ indent }}
+{{ indent }}        $violations = $this->validator->validate($value, groups: ['response']);
+{{ indent }}        if (count($violations) > 0) {
+{{ indent }}            throw new \InvalidArgumentException((string) $violations);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        foreach (get_object_vars($value) as $propertyValue) {
+{{ indent }}            $this->validateSymfonyResponsePayload($propertyValue, $visited);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    foreach ($value as $item) {
+{{ indent }}        $this->validateSymfonyResponsePayload($item, $visited);
+{{ indent }}    }
+{{ indent }}}
+{% endmacro %}
+
+{% macro renderLaravelPayloadMethod(indent) %}
+{{ indent }}private function validateLaravelPayload(mixed $value): void
+{{ indent }}{
+{{ indent }}    if (is_array($value)) {
+{{ indent }}        foreach ($value as $item) {
+{{ indent }}            $this->validateLaravelPayload($item);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    if (!is_object($value)) {
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    $class = $value::class;
+{{ indent }}    if (!method_exists($class, 'rules')) {
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    $validator = \Illuminate\Support\Facades\Validator::make(
+{{ indent }}        $value->toArray(),
+{{ indent }}        $class::rules()
+{{ indent }}    );
+{{ indent }}
+{{ indent }}    if ($validator->fails()) {
+{{ indent }}        throw new \InvalidArgumentException('Validation failed: ' . $validator->errors());
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    foreach (get_object_vars($value) as $propertyValue) {
+{{ indent }}        $this->validateLaravelPayload($propertyValue);
+{{ indent }}    }
+{{ indent }}}
+
+{{ indent }}private function validateLaravelRequestPayload(mixed $value): void
+{{ indent }}{
+{{ indent }}    if (is_array($value)) {
+{{ indent }}        foreach ($value as $item) {
+{{ indent }}            $this->validateLaravelRequestPayload($item);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    if (!is_object($value)) {
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    $class = $value::class;
+{{ indent }}    if (!method_exists($class, 'requestRules')) {
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    $validator = \Illuminate\Support\Facades\Validator::make(
+{{ indent }}        method_exists($value, 'toRequestArray') ? $value->toRequestArray() : $value->toArray(),
+{{ indent }}        $class::requestRules()
+{{ indent }}    );
+{{ indent }}
+{{ indent }}    if ($validator->fails()) {
+{{ indent }}        throw new \InvalidArgumentException('Validation failed: ' . $validator->errors());
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    foreach (get_object_vars($value) as $propertyValue) {
+{{ indent }}        $this->validateLaravelRequestPayload($propertyValue);
+{{ indent }}    }
+{{ indent }}}
+
+{{ indent }}private function validateLaravelResponsePayload(mixed $value): void
+{{ indent }}{
+{{ indent }}    if (is_array($value)) {
+{{ indent }}        foreach ($value as $item) {
+{{ indent }}            $this->validateLaravelResponsePayload($item);
+{{ indent }}        }
+{{ indent }}
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    if (!is_object($value)) {
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    $class = $value::class;
+{{ indent }}    if (!method_exists($class, 'responseRules')) {
+{{ indent }}        return;
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    $validator = \Illuminate\Support\Facades\Validator::make(
+{{ indent }}        method_exists($value, 'toResponseArray') ? $value->toResponseArray() : $value->toArray(),
+{{ indent }}        $class::responseRules()
+{{ indent }}    );
+{{ indent }}
+{{ indent }}    if ($validator->fails()) {
+{{ indent }}        throw new \InvalidArgumentException('Validation failed: ' . $validator->errors());
+{{ indent }}    }
+{{ indent }}
+{{ indent }}    foreach (get_object_vars($value) as $propertyValue) {
+{{ indent }}        $this->validateLaravelResponsePayload($propertyValue);
+{{ indent }}    }
+{{ indent }}}
+{% endmacro %}
+
