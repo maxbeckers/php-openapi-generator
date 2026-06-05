@@ -96,9 +96,9 @@ class ModelGenerationTest extends TestCase
 
         $content = file_get_contents($this->outputDir . '/Model/Account.php');
 
-        self::assertStringContainsString('public static function fromRequestArray(array $data): static', $content);
+        self::assertStringContainsString('public static function fromRequestArray(array $data): Account', $content);
         self::assertStringContainsString("unset(\$data['id']);", $content);
-        self::assertStringContainsString('public static function fromResponseArray(array $data): static', $content);
+        self::assertStringContainsString('public static function fromResponseArray(array $data): Account', $content);
         self::assertStringContainsString("unset(\$data['password']);", $content);
         self::assertStringContainsString('public function toRequestArray(): array', $content);
         self::assertStringContainsString('public function toResponseArray(): array', $content);
