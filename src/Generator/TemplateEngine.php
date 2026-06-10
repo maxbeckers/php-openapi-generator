@@ -10,7 +10,8 @@ use Twig\TwigFilter;
 
 /**
  * Thin wrapper around Twig that loads templates from the versioned template
- * directory (e.g. templates/php82/).
+ * directory (e.g. templates/php82/), with a fallback to the nearest available
+ * version when an exact match is not present.
  */
 class TemplateEngine
 {
@@ -23,12 +24,13 @@ class TemplateEngine
      */
     public function __construct(string $templateBasePath, string $phpVersion, array $globals = [])
     {
-        $versionedDir = $templateBasePath . DIRECTORY_SEPARATOR . 'php' . str_replace('.', '', $phpVersion);
+        $versionedDir = $this->resolveTemplateDir($templateBasePath, $phpVersion);
 
-        if (!is_dir($versionedDir)) {
+        if ($versionedDir === null) {
             throw new \InvalidArgumentException(sprintf(
-                'Template directory not found: %s',
-                $versionedDir
+                'Template directory not found for PHP %s under %s',
+                $phpVersion,
+                $templateBasePath
             ));
         }
 
@@ -90,5 +92,63 @@ class TemplateEngine
         $this->twig->addFilter(new TwigFilter('php_export', function (mixed $value): string {
             return var_export($value, true);
         }));
+    }
+
+    private function resolveTemplateDir(string $templateBasePath, string $phpVersion): ?string
+    {
+        $requestedVersion = $this->normalizePhpVersion($phpVersion);
+        $exactDir = $templateBasePath . DIRECTORY_SEPARATOR . 'php' . $requestedVersion;
+
+        if (is_dir($exactDir)) {
+            return $exactDir;
+        }
+
+        $requestedVersionValue = $this->versionToInt($requestedVersion);
+        $bestMatch = null;
+        $bestMatchValue = null;
+        $highestMatch = null;
+        $highestMatchValue = null;
+
+        foreach (glob($templateBasePath . DIRECTORY_SEPARATOR . 'php*', GLOB_ONLYDIR) ?: [] as $candidateDir) {
+            if (!preg_match('/php(\d+)(\d+)$/', basename($candidateDir), $matches)) {
+                continue;
+            }
+
+            $candidateVersion = $matches[1] . $matches[2];
+            $candidateValue = $this->versionToInt($candidateVersion);
+
+            if ($candidateValue <= $requestedVersionValue && ($bestMatchValue === null || $candidateValue > $bestMatchValue)) {
+                $bestMatch = $candidateDir;
+                $bestMatchValue = $candidateValue;
+            }
+
+            if ($highestMatchValue === null || $candidateValue > $highestMatchValue) {
+                $highestMatch = $candidateDir;
+                $highestMatchValue = $candidateValue;
+            }
+        }
+
+        return $bestMatch ?? $highestMatch;
+    }
+
+    private function normalizePhpVersion(string $phpVersion): string
+    {
+        if (preg_match('/^(\d+)\.(\d+)/', trim($phpVersion), $matches) === 1) {
+            return $matches[1] . $matches[2];
+        }
+
+        return preg_replace('/\D+/', '', $phpVersion) ?: $phpVersion;
+    }
+
+    private function versionToInt(string $phpVersion): int
+    {
+        if (strlen($phpVersion) >= 2) {
+            $major = (int) substr($phpVersion, 0, 1);
+            $minor = (int) substr($phpVersion, 1);
+
+            return ($major * 100) + $minor;
+        }
+
+        return (int) $phpVersion;
     }
 }
