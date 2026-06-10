@@ -47,7 +47,8 @@ use Symfony\Component\Validator\Constraints as Assert;
          */
 {% endif %}
 {% if prop.phpType starts with '?' and prop.phpType|slice(1) ends with '[]' %}{% set declType = '?array' %}{% elseif prop.phpType ends with '[]' %}{% set declType = 'array' %}{% elseif prop.isCircular and not (prop.phpType starts with '?') %}{% set declType = '?' ~ prop.phpType %}{% else %}{% set declType = prop.phpType %}{% endif %}
-        public {{ declType }} ${{ prop.phpName }}{% if prop.isCircular and declType starts with '?' %} = null{% elseif prop.isCircular and declType == 'array' %} = []{% elseif not prop.required and prop.nullable and not prop.hasDefault %} = null{% elseif prop.hasDefault %} = {{ prop.default|php_export }}{% elseif not prop.required %} = null{% endif %},
+{% set inheritedParam = schema.parentClass is not null and schema.parentConstructorProperties|filter(p => p.phpName == prop.phpName)|length > 0 %}
+        {% if not inheritedParam %}public {% endif %}{{ declType }} ${{ prop.phpName }}{% if prop.isCircular and declType starts with '?' %} = null{% elseif prop.isCircular and declType == 'array' %} = []{% elseif not prop.required and prop.nullable and not prop.hasDefault %} = null{% elseif prop.hasDefault %} = {{ prop.default|php_export }}{% elseif not prop.required %} = null{% endif %},
 {% endif %}
 {% endfor %}
     ) {

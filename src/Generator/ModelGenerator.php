@@ -253,10 +253,16 @@ class ModelGenerator implements GeneratorInterface
         // Detect single-ref allOf → "extends" pattern; skip that ref's own properties
         // so the child class does not re-declare inherited readonly properties.
         $parentRefName = null;
+        $parentPropertyNames = [];
         if (!empty($schema->allOf)) {
             $refs = array_filter($schema->allOf, fn ($s) => $s->ref !== null);
             if (count($refs) === 1) {
                 $parentRefName = $this->extractRefName(reset($refs)->ref);
+                $parentSchema = $components->schemas[$parentRefName] ?? null;
+                if ($parentSchema !== null) {
+                    [$parentProperties] = $this->flattenSchemaProperties($parentSchema, $components, [$parentRefName => true]);
+                    $parentPropertyNames = array_keys($parentProperties);
+                }
             }
         }
 
@@ -277,6 +283,9 @@ class ModelGenerator implements GeneratorInterface
             } else {
                 [$subProperties, $subRequired] = $this->flattenSchemaProperties($sub, $components);
                 foreach ($subProperties as $k => $v) {
+                    if (in_array($k, $parentPropertyNames, true)) {
+                        continue;
+                    }
                     $allProperties[$k] = $v;
                 }
                 $allRequired = array_unique(array_merge($allRequired, $subRequired));
@@ -284,6 +293,9 @@ class ModelGenerator implements GeneratorInterface
         }
 
         foreach ($schema->properties as $k => $v) {
+            if (in_array($k, $parentPropertyNames, true)) {
+                continue;
+            }
             $allProperties[$k] = $v;
         }
 

@@ -133,6 +133,12 @@ class SchemaResolver
             return SchemaKind::Enum;
         }
 
+        // Discriminator-only base schema (without oneOf/anyOf/type) still needs a concrete
+        // model class so generated fromArray() calls (e.g. array items) resolve correctly.
+        if ($schema->discriminator !== null) {
+            $this->visitDiscriminatorMappings($schema);
+        }
+
         // oneOf / anyOf with a discriminator → marker interface
         if ((!empty($schema->oneOf) || !empty($schema->anyOf)) && $schema->discriminator !== null) {
             $this->visitCompositionMembers($name, $schema->oneOf);
@@ -161,6 +167,12 @@ class SchemaResolver
         if ($schema->type === 'object' || !empty($schema->properties)) {
             $this->detectCircularProperties($name, $schema);
 
+            return SchemaKind::Object;
+        }
+
+        // If a discriminator exists (and schema is not a oneOf/anyOf interface), generate an object
+        // even when the schema body itself has no explicit type/properties.
+        if ($schema->discriminator !== null) {
             return SchemaKind::Object;
         }
 
@@ -195,6 +207,20 @@ class SchemaResolver
             $refName = $this->extractRefName($schema->ref);
             if ($refName !== '' && isset($this->schemas[$refName])) {
                 $this->visit($refName);
+            }
+        }
+    }
+
+    private function visitDiscriminatorMappings(Schema $schema): void
+    {
+        if ($schema->discriminator === null) {
+            return;
+        }
+
+        foreach ($schema->discriminator->mapping as $target) {
+            $name = $this->extractRefName($target);
+            if ($name !== '' && isset($this->schemas[$name])) {
+                $this->visit($name);
             }
         }
     }

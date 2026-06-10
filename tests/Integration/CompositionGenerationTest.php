@@ -69,10 +69,12 @@ class CompositionGenerationTest extends TestCase
 
         $content = $this->readModel('NamedAddress.php');
 
-        // Child constructor must include inherited + own properties.
+        // Child constructor includes inherited args as plain params, own args as promoted props.
         self::assertStringContainsString('$label', $content);
-        self::assertStringContainsString('public string $street', $content);
-        self::assertStringContainsString('public string $city', $content);
+        self::assertStringContainsString('string $street', $content);
+        self::assertStringContainsString('string $city', $content);
+        self::assertStringNotContainsString('public string $street', $content);
+        self::assertStringNotContainsString('public string $city', $content);
     }
 
     public function testAllOfChildConstructorForwardsInheritedParametersToParent(): void
@@ -95,8 +97,10 @@ class CompositionGenerationTest extends TestCase
         $content = $this->readModel('DogPet.php');
 
         self::assertStringContainsString('class DogPet extends Pet', $content);
-        self::assertStringContainsString('public string $id', $content);
-        self::assertStringContainsString('public string $name', $content);
+        self::assertStringContainsString('string $id', $content);
+        self::assertStringContainsString('string $name', $content);
+        self::assertStringNotContainsString('public string $id', $content);
+        self::assertStringNotContainsString('public string $name', $content);
         self::assertStringContainsString('public string $breed', $content);
     }
 
