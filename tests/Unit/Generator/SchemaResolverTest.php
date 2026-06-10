@@ -116,10 +116,10 @@ class SchemaResolverTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // oneOf with discriminator → Interface
+    // oneOf with discriminator → Object (concrete base class)
     // -------------------------------------------------------------------------
 
-    public function testOneOfWithDiscriminatorClassifiedAsInterface(): void
+    public function testOneOfWithDiscriminatorClassifiedAsObject(): void
     {
         $components = new Components();
         $components->schemas['Dog'] = $this->makeObjectSchema(['type', 'breed']);
@@ -131,7 +131,7 @@ class SchemaResolverTest extends TestCase
 
         $kinds = $this->resolver->resolve($components);
 
-        self::assertSame(SchemaKind::Interface, $kinds['Animal']);
+        self::assertSame(SchemaKind::Object, $kinds['Animal']);
     }
 
     // -------------------------------------------------------------------------

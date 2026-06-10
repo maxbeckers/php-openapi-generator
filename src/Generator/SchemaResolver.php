@@ -139,12 +139,11 @@ class SchemaResolver
             $this->visitDiscriminatorMappings($schema);
         }
 
-        // oneOf / anyOf with a discriminator → marker interface
         if ((!empty($schema->oneOf) || !empty($schema->anyOf)) && $schema->discriminator !== null) {
             $this->visitCompositionMembers($name, $schema->oneOf);
             $this->visitCompositionMembers($name, $schema->anyOf);
 
-            return SchemaKind::Interface;
+            return SchemaKind::Object;
         }
 
         // oneOf / anyOf without discriminator where all members are $refs → object (union type)

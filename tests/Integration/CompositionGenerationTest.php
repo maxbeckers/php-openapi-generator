@@ -139,21 +139,21 @@ class CompositionGenerationTest extends TestCase
     }
 
     // =========================================================================
-    // oneOf + discriminator → interface
+    // oneOf + discriminator → concrete base class with dispatch
     // =========================================================================
 
-    public function testDiscriminatorGeneratesInterface(): void
+    public function testDiscriminatorGeneratesBaseClass(): void
     {
         $config = $this->makeConfig();
         $this->service->generate($config, self::FIXTURES_DIR);
 
-        // The default interfaceSuffix is 'Interface', so Animal → AnimalInterface
-        self::assertFileExists($this->outputDir . '/Model/AnimalInterface.php');
-        $content = $this->readModel('AnimalInterface.php');
-        self::assertStringContainsString('interface AnimalInterface', $content);
+        self::assertFileExists($this->outputDir . '/Model/Animal.php');
+        $content = $this->readModel('Animal.php');
+        self::assertStringContainsString('readonly class Animal', $content);
+        self::assertStringContainsString('return match ($data[\'type\'])', $content);
     }
 
-    public function testDiscriminatorImplementorsImplementInterface(): void
+    public function testDiscriminatorImplementorsExtendBaseClass(): void
     {
         $config = $this->makeConfig();
         $this->service->generate($config, self::FIXTURES_DIR);
@@ -161,16 +161,16 @@ class CompositionGenerationTest extends TestCase
         $dog = $this->readModel('Dog.php');
         $cat = $this->readModel('Cat.php');
 
-        self::assertStringContainsString('implements AnimalInterface', $dog);
-        self::assertStringContainsString('implements AnimalInterface', $cat);
+        self::assertStringContainsString('extends Animal', $dog);
+        self::assertStringContainsString('extends Animal', $cat);
     }
 
-    public function testDiscriminatorInterfaceHasFromArrayFactory(): void
+    public function testDiscriminatorBaseClassHasFromArrayFactory(): void
     {
         $config = $this->makeConfig();
         $this->service->generate($config, self::FIXTURES_DIR);
 
-        $content = $this->readModel('AnimalInterface.php');
+        $content = $this->readModel('Animal.php');
 
         self::assertStringContainsString('public static function fromArray', $content);
     }
@@ -180,7 +180,7 @@ class CompositionGenerationTest extends TestCase
         $config = $this->makeConfig();
         $this->service->generate($config, self::FIXTURES_DIR);
 
-        foreach (['AnimalInterface.php', 'Dog.php', 'Cat.php'] as $file) {
+        foreach (['Animal.php', 'Dog.php', 'Cat.php'] as $file) {
             $path = $this->outputDir . '/Model/' . $file;
             $output = shell_exec(PHP_BINARY . ' -l ' . escapeshellarg($path) . ' 2>&1');
             self::assertStringContainsString('No syntax errors', (string) $output, "Syntax error in $file");

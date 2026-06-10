@@ -102,45 +102,62 @@ class ModelGenerator implements GeneratorInterface
             $contexts[] = new GenerationContext($this->config, $schemaContext);
         }
 
-        // Second pass: for every discriminator interface, add it to each implementing
-        // schema's implementsInterfaces so concrete classes get `implements XxxInterface`.
-        $interfaceMap = [];  // implementingSchemaName => [interfaceFqcn, ...]
+        $interfaceMap = [];
+        $baseParentMap = [];
         foreach ($contexts as $ctx) {
             $sc = $ctx->schema;
-            if ($sc->kind !== SchemaKind::Interface) {
-                continue;
-            }
             $schema = $components->schemas[$sc->schemaName] ?? null;
             if ($schema === null) {
                 continue;
             }
-            $ifFqcn = $sc->namespace . '\\' . $sc->className;
-            foreach (array_merge($schema->oneOf, $schema->anyOf) as $sub) {
-                if ($sub->ref !== null) {
-                    $implName = $this->extractRefName($sub->ref);
-                    $interfaceMap[$implName][] = $ifFqcn;
+
+            if ($sc->kind === SchemaKind::Interface) {
+                $ifFqcn = $sc->namespace . '\\' . $sc->className;
+                foreach (array_merge($schema->oneOf, $schema->anyOf) as $sub) {
+                    if ($sub->ref !== null) {
+                        $implName = $this->extractRefName($sub->ref);
+                        $interfaceMap[$implName][] = $ifFqcn;
+                    }
+                }
+                continue;
+            }
+
+            if ($sc->kind === SchemaKind::Object
+                && $schema->discriminator !== null
+                && (!empty($schema->oneOf) || !empty($schema->anyOf))
+            ) {
+                $baseFqcn = $sc->namespace . '\\' . $sc->className;
+                foreach ($this->getDiscriminatorChildSchemaNames($schema) as $childSchemaName) {
+                    $baseParentMap[$childSchemaName] = [
+                        'fqcn' => $baseFqcn,
+                        'props' => $sc->constructorProperties,
+                    ];
                 }
             }
         }
         foreach ($contexts as $ctx) {
             $sc = $ctx->schema;
-            if (!isset($interfaceMap[$sc->schemaName])) {
-                continue;
-            }
-            foreach ($interfaceMap[$sc->schemaName] as $ifFqcn) {
-                if (!in_array($ifFqcn, $sc->implementsInterfaces, true)) {
-                    $sc->implementsInterfaces[] = $ifFqcn;
-                    $sc->imports->add($ifFqcn);
+            if (isset($interfaceMap[$sc->schemaName])) {
+                foreach ($interfaceMap[$sc->schemaName] as $ifFqcn) {
+                    if (!in_array($ifFqcn, $sc->implementsInterfaces, true)) {
+                        $sc->implementsInterfaces[] = $ifFqcn;
+                        $sc->imports->add($ifFqcn);
+                    }
                 }
+            }
+
+            if (isset($baseParentMap[$sc->schemaName]) && $sc->parentClass === null) {
+                /** @var array{fqcn: string, props: array<int, PropertyContext>} $baseParent */
+                $baseParent = $baseParentMap[$sc->schemaName];
+                $sc->parentClass = $baseParent['fqcn'];
+                $sc->imports->add($baseParent['fqcn']);
+                $sc->parentConstructorProperties = $baseParent['props'];
+                $sc->constructorProperties = $this->mergeUniqueProperties($baseParent['props'], $sc->properties);
             }
         }
 
         return $contexts;
     }
-
-    // -------------------------------------------------------------------------
-    // Private: context building
-    // -------------------------------------------------------------------------
 
     private function buildSchemaContext(
         string $schemaName,
@@ -159,17 +176,14 @@ class ModelGenerator implements GeneratorInterface
 
         $circularProps = $this->resolver->getCircularProperties($schemaName);
 
-        // Resolve properties for object schemas
         $properties = [];
         if ($kind === SchemaKind::Object) {
-            $properties = $this->resolveProperties($schemaName, $schema, $circularProps, $imports, $components);
+            $properties = $this->resolveProperties($schema, $circularProps, $imports, $components);
         }
 
-        // Resolve parent class (allOf single $ref pattern)
         $parentClass = null;
         $parentConstructorProperties = [];
         $constructorProperties = $properties;
-        $discriminatorCases = [];
         $implementsInterfaces = [];
         $unionTypes = [];
 
@@ -193,10 +207,7 @@ class ModelGenerator implements GeneratorInterface
 
         if (!empty($schema->oneOf) || !empty($schema->anyOf)) {
             if ($schema->discriminator !== null) {
-                // This schema is the interface; implementing schemas are added in the
-                // second pass inside buildContexts(). Nothing to do here.
             } else {
-                // Union type members
                 foreach (array_merge($schema->oneOf, $schema->anyOf) as $sub) {
                     if ($sub->ref !== null) {
                         $refName = $this->extractRefName($sub->ref);
@@ -226,7 +237,6 @@ class ModelGenerator implements GeneratorInterface
             imports: $imports,
         );
 
-        // Apply schema-level plugins
         foreach ($this->schemaPlugins as $plugin) {
             $plugin->process(new SchemaExtensionContext($ctx, $schema->extensions));
         }
@@ -240,18 +250,14 @@ class ModelGenerator implements GeneratorInterface
      * @return PropertyContext[]
      */
     private function resolveProperties(
-        string $schemaName,
         Schema $schema,
         array $circularProps,
         ImportManager $imports,
         Components $components,
     ): array {
-        // Collect merged properties from allOf first
         $allProperties = [];
         $allRequired = $schema->required;
 
-        // Detect single-ref allOf → "extends" pattern; skip that ref's own properties
-        // so the child class does not re-declare inherited readonly properties.
         $parentRefName = null;
         $parentPropertyNames = [];
         if (!empty($schema->allOf)) {
@@ -437,7 +443,6 @@ class ModelGenerator implements GeneratorInterface
         $visited[$schemaName] = true;
 
         $ownProperties = $this->resolveProperties(
-            schemaName: $schemaName,
             schema: $schema,
             circularProps: $this->resolver->getCircularProperties($schemaName),
             imports: $imports,
@@ -549,6 +554,36 @@ class ModelGenerator implements GeneratorInterface
         }
 
         return $cases;
+    }
+
+    /**
+     * @return string[]
+     */
+    private function getDiscriminatorChildSchemaNames(Schema $schema): array
+    {
+        $names = [];
+
+        foreach ($schema->discriminator?->mapping ?? [] as $mapped) {
+            $name = $this->normalizeDiscriminatorTargetName($mapped);
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+
+        if ($names !== []) {
+            return array_values(array_unique($names));
+        }
+
+        foreach (array_merge($schema->oneOf, $schema->anyOf) as $sub) {
+            if ($sub->ref !== null) {
+                $name = $this->extractRefName($sub->ref);
+                if ($name !== '') {
+                    $names[] = $name;
+                }
+            }
+        }
+
+        return array_values(array_unique($names));
     }
 
     private function normalizeDiscriminatorTargetName(string $target): string

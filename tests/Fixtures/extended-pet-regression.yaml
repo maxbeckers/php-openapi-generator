@@ -1,0 +1,243 @@
+openapi: "3.0.0"
+info:
+  title: Extended Pet Regression API
+  version: "1.0.0"
+
+paths: {}
+
+components:
+  schemas:
+    Adventure:
+      type: object
+      required: [tags, stages]
+      properties:
+        tags:
+          type: array
+          items:
+            type: string
+        stages:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/FightStage'
+              - $ref: '#/components/schemas/TalkStage'
+            discriminator:
+              propertyName: type
+              mapping:
+                fight: '#/components/schemas/FightStage'
+                talk: TalkStage
+
+    Stage:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+      discriminator:
+        propertyName: type
+        mapping:
+          fight: '#/components/schemas/FightStage'
+          talk: TalkStage
+
+    FightStage:
+      allOf:
+        - $ref: '#/components/schemas/Stage'
+        - type: object
+          required: [target]
+          properties:
+            target:
+              type: string
+
+    TalkStage:
+      allOf:
+        - $ref: '#/components/schemas/Stage'
+        - type: object
+          required: [npc]
+          properties:
+            npc:
+              type: string
+
+    PetTree:
+      type: object
+      required: [id, root]
+      properties:
+        id:
+          type: string
+        root:
+          $ref: '#/components/schemas/PetNode'
+
+    PetNode:
+      type: object
+      required: [id, text]
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/PetOption'
+
+    PetOption:
+      type: object
+      properties:
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/OptionCondition'
+        inline_conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/InlineDecisionCondition'
+
+    OptionCondition:
+      discriminator:
+        propertyName: type
+        mapping:
+          has_tag: '#/components/schemas/HasTagCondition'
+          relationship_min: '#/components/schemas/RelationshipMinCondition'
+          training_completed: TrainingCompletedCondition
+
+    HasTagCondition:
+      allOf:
+        - $ref: '#/components/schemas/OptionCondition'
+        - type: object
+          required: [type, tag]
+          properties:
+            type:
+              type: string
+            tag:
+              type: string
+
+    RelationshipMinCondition:
+      allOf:
+        - $ref: '#/components/schemas/OptionCondition'
+        - type: object
+          required: [type, companion, value]
+          properties:
+            type:
+              type: string
+            companion:
+              type: string
+            faction:
+              type: string
+            value:
+              type: integer
+
+    TrainingCompletedCondition:
+      allOf:
+        - $ref: '#/components/schemas/OptionCondition'
+        - type: object
+          required: [type, training_id]
+          properties:
+            type:
+              type: string
+            training_id:
+              type: string
+
+    InlineDecisionCondition:
+      oneOf:
+        - $ref: '#/components/schemas/MoodCondition'
+        - $ref: '#/components/schemas/TrustMinCondition'
+      discriminator:
+        propertyName: type
+        mapping:
+          mood: '#/components/schemas/MoodCondition'
+          trust_min: '#/components/schemas/TrustMinCondition'
+
+    MoodCondition:
+      type: object
+      required: [type, topic]
+      properties:
+        type:
+          type: string
+          enum: [mood]
+        topic:
+          type: string
+
+    TrustMinCondition:
+      type: object
+      required: [type, companion, min]
+      properties:
+        type:
+          type: string
+          enum: [trust_min]
+        companion:
+          type: string
+        min:
+          type: integer
+
+    PetEffect:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+      discriminator:
+        propertyName: type
+        mapping:
+          set_trait: '#/components/schemas/SetTraitEffect'
+          add_bond: AddBondEffect
+
+    SetTraitEffect:
+      allOf:
+        - $ref: '#/components/schemas/PetEffect'
+        - type: object
+          required: [type, trait, value]
+          properties:
+            trait:
+              type: string
+            value:
+              type: boolean
+
+    AddBondEffect:
+      allOf:
+        - $ref: '#/components/schemas/PetEffect'
+        - type: object
+          required: [type, companion, value]
+          properties:
+            companion:
+              type: string
+            faction:
+              type: string
+            value:
+              type: integer
+
+    EffectCarrier:
+      type: object
+      required: [effect]
+      properties:
+        effect:
+          $ref: '#/components/schemas/CombinedEffect'
+
+    CombinedEffect:
+      allOf:
+        - $ref: '#/components/schemas/EffectCore'
+        - $ref: '#/components/schemas/EffectExtra'
+
+    EffectCore:
+      allOf:
+        - $ref: '#/components/schemas/BaseEffect'
+        - type: object
+          properties:
+            tag:
+              type: string
+            value:
+              type: integer
+
+    EffectExtra:
+      allOf:
+        - type: object
+          properties:
+            companion:
+              type: string
+            faction:
+              type: string
+
+    BaseEffect:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string

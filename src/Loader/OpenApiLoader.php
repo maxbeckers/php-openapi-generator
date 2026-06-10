@@ -18,6 +18,7 @@ use MaxBeckers\OpenApiGenerator\Spec\Schema;
 use MaxBeckers\OpenApiGenerator\Spec\SecurityScheme;
 use MaxBeckers\OpenApiGenerator\Spec\Server;
 use MaxBeckers\OpenApiGenerator\Spec\Tag;
+use MaxBeckers\YamlParser\YamlParser;
 
 class OpenApiLoader
 {
@@ -35,7 +36,7 @@ class OpenApiLoader
         if ($extension === 'json') {
             $raw = json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
         } else {
-            $parser = new \MaxBeckers\YamlParser\YamlParser();
+            $parser = new YamlParser();
             $raw = $parser->parse(file_get_contents($path));
             $raw = $this->normalise($raw);
 
