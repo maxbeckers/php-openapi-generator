@@ -167,15 +167,26 @@ class ModelGenerator implements GeneratorInterface
 
         // Resolve parent class (allOf single $ref pattern)
         $parentClass = null;
+        $parentConstructorProperties = [];
+        $constructorProperties = $properties;
         $implementsInterfaces = [];
         $unionTypes = [];
 
-        if (!empty($schema->allOf)) {
-            $refs = array_filter($schema->allOf, fn ($s) => $s->ref !== null);
-            if (count($refs) === 1) {
-                $refName = $this->extractRefName(reset($refs)->ref);
-                $parentClass = $namespace . '\\' . $this->naming->className($refName);
-                $imports->add($parentClass);
+        $parentRefName = $this->resolveParentRefName($schema);
+        if ($parentRefName !== null) {
+            $refName = $parentRefName;
+            $parentClass = $namespace . '\\' . $this->naming->className($refName);
+            $imports->add($parentClass);
+
+            $parentSchema = $components->schemas[$refName] ?? null;
+            if ($parentSchema !== null) {
+                $parentConstructorProperties = $this->buildConstructorProperties(
+                    schemaName: $refName,
+                    schema: $parentSchema,
+                    imports: $imports,
+                    components: $components,
+                );
+                $constructorProperties = $this->mergeUniqueProperties($parentConstructorProperties, $properties);
             }
         }
 
@@ -204,6 +215,8 @@ class ModelGenerator implements GeneratorInterface
             properties: $properties,
             circularProperties: $circularProps,
             parentClass: $parentClass,
+            parentConstructorProperties: $parentConstructorProperties,
+            constructorProperties: $constructorProperties,
             implementsInterfaces: $implementsInterfaces,
             unionTypes: $unionTypes,
             imports: $imports,
@@ -337,6 +350,90 @@ class ModelGenerator implements GeneratorInterface
         }
 
         return $contexts;
+    }
+
+    /**
+     * Build constructor parameter list for a schema including inherited parent params.
+     *
+     * @param array<string, bool> $visited
+     *
+     * @return PropertyContext[]
+     */
+    private function buildConstructorProperties(
+        string $schemaName,
+        Schema $schema,
+        ImportManager $imports,
+        Components $components,
+        array $visited = [],
+    ): array {
+        if (isset($visited[$schemaName])) {
+            return [];
+        }
+        $visited[$schemaName] = true;
+
+        $ownProperties = $this->resolveProperties(
+            schemaName: $schemaName,
+            schema: $schema,
+            circularProps: $this->resolver->getCircularProperties($schemaName),
+            imports: $imports,
+            components: $components,
+        );
+
+        $parentRefName = $this->resolveParentRefName($schema);
+        if ($parentRefName === null) {
+            return $ownProperties;
+        }
+
+        $parentSchema = $components->schemas[$parentRefName] ?? null;
+        if ($parentSchema === null) {
+            return $ownProperties;
+        }
+
+        $parentProperties = $this->buildConstructorProperties(
+            schemaName: $parentRefName,
+            schema: $parentSchema,
+            imports: $imports,
+            components: $components,
+            visited: $visited,
+        );
+
+        return $this->mergeUniqueProperties($parentProperties, $ownProperties);
+    }
+
+    private function resolveParentRefName(Schema $schema): ?string
+    {
+        if (empty($schema->allOf)) {
+            return null;
+        }
+
+        $refs = array_filter($schema->allOf, fn ($s) => $s->ref !== null);
+        if (count($refs) !== 1) {
+            return null;
+        }
+
+        return $this->extractRefName(reset($refs)->ref);
+    }
+
+    /**
+     * @param PropertyContext[] $base
+     * @param PropertyContext[] $extra
+     *
+     * @return PropertyContext[]
+     */
+    private function mergeUniqueProperties(array $base, array $extra): array
+    {
+        $merged = [];
+        $seen = [];
+
+        foreach (array_merge($base, $extra) as $property) {
+            if (isset($seen[$property->phpName])) {
+                continue;
+            }
+            $seen[$property->phpName] = true;
+            $merged[] = $property;
+        }
+
+        return $merged;
     }
 
     private function resolvePhpType(Schema $propSchema, ImportManager $imports, Components $components): string

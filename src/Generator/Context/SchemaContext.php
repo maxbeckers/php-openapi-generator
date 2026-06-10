@@ -22,6 +22,8 @@ class SchemaContext
      * @param PropertyContext[] $properties       Resolved + ordered property list
      * @param string[]          $circularProperties Property names involved in circular refs
      * @param string|null       $parentClass      FQCN of parent class (from allOf single-$ref pattern)
+     * @param PropertyContext[] $parentConstructorProperties Constructor params expected by parent::__construct()
+     * @param PropertyContext[] $constructorProperties Full constructor params for this class (inherited + own)
      * @param string[]          $implementsInterfaces FQCNs of interfaces this class implements
      * @param string[]          $unionTypes       FQCNs for oneOf/anyOf without discriminator
      * @param ImportManager     $imports          Manages use-statement deduplication
@@ -35,6 +37,8 @@ class SchemaContext
         public array $properties,
         public array $circularProperties,
         public ?string $parentClass,
+        public array $parentConstructorProperties,
+        public array $constructorProperties,
         public array $implementsInterfaces,
         public array $unionTypes,
         public readonly ImportManager $imports,

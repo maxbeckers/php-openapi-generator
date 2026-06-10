@@ -69,11 +69,47 @@ class CompositionGenerationTest extends TestCase
 
         $content = $this->readModel('NamedAddress.php');
 
-        // 'label' is NamedAddress-own; 'street'/'city' are inherited from Address
+        // Child constructor must include inherited + own properties.
         self::assertStringContainsString('$label', $content);
-        // street and city should NOT be redeclared as own constructor params
-        self::assertStringNotContainsString('public string $street', $content);
-        self::assertStringNotContainsString('public string $city', $content);
+        self::assertStringContainsString('public string $street', $content);
+        self::assertStringContainsString('public string $city', $content);
+    }
+
+    public function testAllOfChildConstructorForwardsInheritedParametersToParent(): void
+    {
+        $config = $this->makeConfig();
+        $this->service->generate($config, self::FIXTURES_DIR);
+
+        $content = $this->readModel('NamedAddress.php');
+
+        self::assertStringContainsString('parent::__construct(', $content);
+        self::assertStringContainsString('street: $street', $content);
+        self::assertStringContainsString('city: $city', $content);
+    }
+
+    public function testPetAllOfChildConstructorContainsParentAndOwnFields(): void
+    {
+        $config = $this->makeConfig();
+        $this->service->generate($config, self::FIXTURES_DIR);
+
+        $content = $this->readModel('DogPet.php');
+
+        self::assertStringContainsString('class DogPet extends Pet', $content);
+        self::assertStringContainsString('public string $id', $content);
+        self::assertStringContainsString('public string $name', $content);
+        self::assertStringContainsString('public string $breed', $content);
+    }
+
+    public function testPetAllOfChildForwardsOnlyParentArgsToParentConstructor(): void
+    {
+        $config = $this->makeConfig();
+        $this->service->generate($config, self::FIXTURES_DIR);
+
+        $content = $this->readModel('DogPet.php');
+
+        self::assertMatchesRegularExpression('/parent::__construct\(\s*id: \$id,\s*name: \$name,\s*\);/s', $content);
+        self::assertDoesNotMatchRegularExpression('/parent::__construct\([^)]*breed:/s', $content);
+        self::assertDoesNotMatchRegularExpression('/parent::__construct\([^)]*age:/s', $content);
     }
 
     public function testAllOfParentToArrayIsChained(): void
@@ -91,7 +127,7 @@ class CompositionGenerationTest extends TestCase
         $config = $this->makeConfig();
         $this->service->generate($config, self::FIXTURES_DIR);
 
-        foreach (['Address.php', 'NamedAddress.php'] as $file) {
+        foreach (['Address.php', 'NamedAddress.php', 'Pet.php', 'DogPet.php'] as $file) {
             $path = $this->outputDir . '/Model/' . $file;
             $output = shell_exec(PHP_BINARY . ' -l ' . escapeshellarg($path) . ' 2>&1');
             self::assertStringContainsString('No syntax errors', (string) $output, "Syntax error in $file");

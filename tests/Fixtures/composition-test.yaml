@@ -75,6 +75,30 @@ components:
             label:
               type: string
 
+    # --- allOf inheritance with realistic base/child model ---
+    Pet:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    DogPet:
+      allOf:
+        - $ref: '#/components/schemas/Pet'
+        - type: object
+          required:
+            - breed
+          properties:
+            breed:
+              type: string
+            age:
+              type: integer
+
     # --- oneOf with discriminator (generates interface + implementors) ---
     Animal:
       oneOf:

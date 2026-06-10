@@ -20,11 +20,5 @@
             "App\\Api\\": "generated/Api/",
             "App\\Model\\": "generated/Model/"
         }
-    },
-    "repositories": [
-        {
-            "type": "path",
-            "url": "../.."
-        }
-    ]
+    }
 }

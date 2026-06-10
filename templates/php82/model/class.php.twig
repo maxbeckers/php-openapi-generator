@@ -27,7 +27,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 {
 {% if config.generateConstructor %}
     public function __construct(
-{% for prop in schema.properties %}
+{% for prop in schema.constructorProperties %}
 {% if not (config.splitReadWriteDtos and prop.writeOnly) %}
 {% set validationAttributes = validation.renderValidationAttributes(config, prop, '        ')|trim("\n\r") %}
 {% if validationAttributes != '' %}
@@ -52,7 +52,11 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% endfor %}
     ) {
 {% if schema.parentClass is not null %}
-        parent::__construct();
+        parent::__construct(
+{% for prop in schema.parentConstructorProperties %}
+            {{ prop.phpName }}: ${{ prop.phpName }},
+{% endfor %}
+        );
 {% endif %}
     }
 {% else %}
@@ -92,7 +96,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% endif %}
 {% endfor %}
         return new {{ schema.className }}(
-{% for prop in schema.properties %}
+{% for prop in schema.constructorProperties %}
 {% if not (config.splitReadWriteDtos and prop.writeOnly) %}
 {# Determine whether this is an array-of-objects, nullable-array-of-objects, or circular object ref. #}
 {% set isNullableArray = prop.phpType starts with '?' and prop.phpType|slice(1) ends with '[]' and prop.phpType|slice(1) != '[]' %}
