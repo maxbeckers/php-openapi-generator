@@ -95,7 +95,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% endif %}
 {% endif %}
 {% endfor %}
-        return new {{ schema.className }}(
+        $instance = new {{ schema.className }}(
 {% for prop in schema.constructorProperties %}
 {% if not (config.splitReadWriteDtos and prop.writeOnly) %}
 {# Determine whether this is an array-of-objects, nullable-array-of-objects, or circular object ref. #}
@@ -107,10 +107,52 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% set isObjectProp = bareType not in scalars and not isArray and not isNullableArray and not isCircularObject %}
 {% if isArray %}
 {% set elementType = prop.phpType|slice(0, prop.phpType|length - 2) %}
+{% set elementScalarTypes = ['string', 'int', 'float', 'bool', 'mixed', 'array'] %}
+{% set isScalarArray = elementType in elementScalarTypes %}
+{% set hasDiscriminatedUnionItems = prop.schema is not null and prop.schema.items is not null and prop.schema.items.discriminator is not null and (prop.schema.items.oneOf is not empty or prop.schema.items.anyOf is not empty) %}
+{% if hasDiscriminatedUnionItems %}
+            {{ prop.phpName }}: array_map(static function ($item) {
+                if (!is_array($item) || !isset($item['{{ prop.schema.items.discriminator.propertyName }}'])) {
+                    return $item;
+                }
+
+                return match ($item['{{ prop.schema.items.discriminator.propertyName }}']) {
+{% for discValue, discTarget in prop.schema.items.discriminator.mapping %}
+{% set discRefName = discTarget starts with '#/' ? discTarget|split('/')|last : discTarget %}
+                    '{{ discValue }}' => {{ config.classPrefix ~ discRefName ~ config.classSuffix }}::fromArray($item),
+{% endfor %}
+                    default => $item,
+                };
+            }, $data['{{ prop.wireName }}'] ?? []),
+{% elseif isScalarArray %}
+            {{ prop.phpName }}: $data['{{ prop.wireName }}'] ?? [],
+{% else %}
             {{ prop.phpName }}: array_map(static fn($item) => {{ elementType }}::fromArray($item), $data['{{ prop.wireName }}'] ?? []),
+{% endif %}
 {% elseif isNullableArray %}
 {% set elementType = prop.phpType|slice(1, prop.phpType|length - 3) %}
+{% set elementScalarTypes = ['string', 'int', 'float', 'bool', 'mixed', 'array'] %}
+{% set isScalarArray = elementType in elementScalarTypes %}
+{% set hasDiscriminatedUnionItems = prop.schema is not null and prop.schema.items is not null and prop.schema.items.discriminator is not null and (prop.schema.items.oneOf is not empty or prop.schema.items.anyOf is not empty) %}
+{% if hasDiscriminatedUnionItems %}
+            {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? array_map(static function ($item) {
+                if (!is_array($item) || !isset($item['{{ prop.schema.items.discriminator.propertyName }}'])) {
+                    return $item;
+                }
+
+                return match ($item['{{ prop.schema.items.discriminator.propertyName }}']) {
+{% for discValue, discTarget in prop.schema.items.discriminator.mapping %}
+{% set discRefName = discTarget starts with '#/' ? discTarget|split('/')|last : discTarget %}
+                    '{{ discValue }}' => {{ config.classPrefix ~ discRefName ~ config.classSuffix }}::fromArray($item),
+{% endfor %}
+                    default => $item,
+                };
+            }, $data['{{ prop.wireName }}']) : null,
+{% elseif isScalarArray %}
+            {{ prop.phpName }}: $data['{{ prop.wireName }}'] ?? null,
+{% else %}
             {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? array_map(static fn($item) => {{ elementType }}::fromArray($item), $data['{{ prop.wireName }}']) : null,
+{% endif %}
 {% elseif isCircularObject %}
 {% set circularType = prop.phpType starts with '?' ? prop.phpType|slice(1) : prop.phpType %}
             {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? {{ circularType }}::fromArray($data['{{ prop.wireName }}']) : null,
@@ -126,6 +168,21 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% endif %}
 {% endfor %}
         );
+
+{% if schema.discriminatorCases is not empty and schema.schema.discriminator is not null %}
+        if (!isset($data['{{ schema.schema.discriminator.propertyName }}'])) {
+            return $instance;
+        }
+
+        return match ($data['{{ schema.schema.discriminator.propertyName }}']) {
+{% for discValue, discClass in schema.discriminatorCases %}
+            '{{ discValue }}' => {{ discClass }}::fromArray($data),
+{% endfor %}
+            default => $instance,
+        };
+{% else %}
+        return $instance;
+{% endif %}
     }
 
     public static function fromRequestArray(array $data): {{ schema.className }}
@@ -165,10 +222,24 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% set scalars = ['string', 'int', 'float', 'bool', 'mixed', 'array'] %}
 {% set isObjectProp = bareType not in scalars and not isArray and not isNullableArray %}
 {% set isPhpNullable = prop.phpType starts with '?' %}
+{% set hasDiscriminatedUnionItems = prop.schema is not null and prop.schema.items is not null and prop.schema.items.discriminator is not null and (prop.schema.items.oneOf is not empty or prop.schema.items.anyOf is not empty) %}
+{% if isArray %}
+{% set arrayElementType = prop.phpType|slice(0, prop.phpType|length - 2) %}
+{% elseif isNullableArray %}
+{% set arrayElementType = prop.phpType|slice(1, prop.phpType|length - 3) %}
+{% else %}
+{% set arrayElementType = '' %}
+{% endif %}
+{% set arrayElementScalars = ['string', 'int', 'float', 'bool', 'mixed', 'array'] %}
+{% set isScalarArray = isArray or isNullableArray ? (arrayElementType in arrayElementScalars) : false %}
 {% if config.omitNullsInToArray and isPhpNullable %}
         if ($this->{{ prop.phpName }} !== null) {
-{% if isArray or isNullableArray %}
+{% if hasDiscriminatedUnionItems %}
+            $data['{{ prop.wireName }}'] = array_map(static fn($item) => is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : $item, $this->{{ prop.phpName }});
+{% elseif (isArray or isNullableArray) and not isScalarArray %}
             $data['{{ prop.wireName }}'] = array_map(static fn($item) => $item->toArray(), $this->{{ prop.phpName }});
+{% elseif isArray or isNullableArray %}
+            $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }};
 {% elseif isObjectProp %}
             $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}->toArray();
 {% else %}
@@ -176,10 +247,18 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% endif %}
         }
 {% else %}
-{% if isArray %}
+{% if hasDiscriminatedUnionItems and isArray %}
+        $data['{{ prop.wireName }}'] = array_map(static fn($item) => is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : $item, $this->{{ prop.phpName }});
+{% elseif hasDiscriminatedUnionItems and isNullableArray %}
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }} !== null ? array_map(static fn($item) => is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : $item, $this->{{ prop.phpName }}) : null;
+{% elseif isArray and not isScalarArray %}
         $data['{{ prop.wireName }}'] = array_map(static fn($item) => $item->toArray(), $this->{{ prop.phpName }});
-{% elseif isNullableArray %}
+{% elseif isArray %}
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }};
+{% elseif isNullableArray and not isScalarArray %}
         $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }} !== null ? array_map(static fn($item) => $item->toArray(), $this->{{ prop.phpName }}) : null;
+{% elseif isNullableArray %}
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }};
 {% elseif isObjectProp and isPhpNullable %}
         $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}?->toArray();
 {% elseif isObjectProp %}

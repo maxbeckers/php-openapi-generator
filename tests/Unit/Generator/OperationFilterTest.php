@@ -144,6 +144,63 @@ class OperationFilterTest extends TestCase
         self::assertArrayHasKey('Money', $filtered->components->schemas);
     }
 
+    public function testDiscriminatorMappingReferencesArePreserved(): void
+    {
+        $spec = $this->loader->load([
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'T', 'version' => '1'],
+            'paths' => [
+                '/events' => [
+                    'get' => [
+                        'operationId' => 'listEvents',
+                        'responses' => [
+                            '200' => [
+                                'description' => 'ok',
+                                'content' => [
+                                    'application/json' => [
+                                        'schema' => ['$ref' => '#/components/schemas/EventEnvelope'],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'components' => [
+                'schemas' => [
+                    'EventEnvelope' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'event' => ['$ref' => '#/components/schemas/Event'],
+                        ],
+                    ],
+                    'Event' => [
+                        'type' => 'object',
+                        'discriminator' => [
+                            'propertyName' => 'type',
+                            'mapping' => [
+                                'foo' => '#/components/schemas/FooEvent',
+                            ],
+                        ],
+                    ],
+                    'FooEvent' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'type' => ['type' => 'string'],
+                            'payload' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $filtered = $this->filter->filter($spec, includeOperationIds: ['listEvents']);
+
+        self::assertArrayHasKey('EventEnvelope', $filtered->components->schemas);
+        self::assertArrayHasKey('Event', $filtered->components->schemas);
+        self::assertArrayHasKey('FooEvent', $filtered->components->schemas);
+    }
+
     // -------------------------------------------------------------------------
     // Path filtering
     // -------------------------------------------------------------------------

@@ -140,6 +140,19 @@ class OperationFilter
         foreach ([...$schema->allOf, ...$schema->oneOf, ...$schema->anyOf] as $sub) {
             $this->collectRefs($sub, $components, $reachable);
         }
+
+        if ($schema->discriminator !== null) {
+            foreach ($schema->discriminator->mapping as $target) {
+                $name = (string) (array_reverse(explode('/', $target))[0] ?? $target);
+                if ($name === '' || isset($reachable[$name]) || !isset($components->schemas[$name])) {
+                    continue;
+                }
+
+                $reachable[$name] = true;
+                $this->collectRefs($components->schemas[$name], $components, $reachable);
+            }
+        }
+
         if ($schema->not !== null) {
             $this->collectRefs($schema->not, $components, $reachable);
         }

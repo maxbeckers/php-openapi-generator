@@ -169,6 +169,7 @@ class ModelGenerator implements GeneratorInterface
         $parentClass = null;
         $parentConstructorProperties = [];
         $constructorProperties = $properties;
+        $discriminatorCases = [];
         $implementsInterfaces = [];
         $unionTypes = [];
 
@@ -206,6 +207,8 @@ class ModelGenerator implements GeneratorInterface
             }
         }
 
+        $discriminatorCases = $this->buildDiscriminatorCases($schemaName, $schema, $components, $imports);
+
         $ctx = new SchemaContext(
             schemaName: $schemaName,
             className: $className,
@@ -217,6 +220,7 @@ class ModelGenerator implements GeneratorInterface
             parentClass: $parentClass,
             parentConstructorProperties: $parentConstructorProperties,
             constructorProperties: $constructorProperties,
+            discriminatorCases: $discriminatorCases,
             implementsInterfaces: $implementsInterfaces,
             unionTypes: $unionTypes,
             imports: $imports,
@@ -261,31 +265,28 @@ class ModelGenerator implements GeneratorInterface
                 $refName = $this->extractRefName($sub->ref);
                 $refSchema = $components->schemas[$refName] ?? null;
                 if ($refSchema !== null) {
-                    // Always inherit required list so child knows which props are required.
-                    $allRequired = array_unique(array_merge($allRequired, $refSchema->required));
-                    // But skip property declarations when this IS the parent class —
-                    // those properties are inherited and must not be re-declared.
+                    [$refProperties, $refRequired] = $this->flattenSchemaProperties($refSchema, $components, [$refName => true]);
+                    $allRequired = array_unique(array_merge($allRequired, $refRequired));
                     if ($refName === $parentRefName) {
                         continue;
                     }
-                    foreach ($refSchema->properties as $k => $v) {
+                    foreach ($refProperties as $k => $v) {
                         $allProperties[$k] = $v;
                     }
                 }
             } else {
-                foreach ($sub->properties as $k => $v) {
+                [$subProperties, $subRequired] = $this->flattenSchemaProperties($sub, $components);
+                foreach ($subProperties as $k => $v) {
                     $allProperties[$k] = $v;
                 }
-                $allRequired = array_unique(array_merge($allRequired, $sub->required));
+                $allRequired = array_unique(array_merge($allRequired, $subRequired));
             }
         }
 
-        // Own properties override allOf properties
         foreach ($schema->properties as $k => $v) {
             $allProperties[$k] = $v;
         }
 
-        // Sort: required first if configured
         if ($this->config->sortPropertiesByRequired) {
             uksort($allProperties, function (string $a, string $b) use ($allRequired): int {
                 $aReq = in_array($a, $allRequired, true);
@@ -308,7 +309,6 @@ class ModelGenerator implements GeneratorInterface
             if ($propSchema->nullable && !str_starts_with($phpType, '?')) {
                 $phpType = '?' . $phpType;
             }
-            // Non-required properties without an explicit default become nullable
             if (!$required && !$propSchema->hasDefault && !$propSchema->nullable
                 && !str_starts_with($phpType, '?') && $phpType !== 'mixed' && !$isCircular
             ) {
@@ -331,7 +331,6 @@ class ModelGenerator implements GeneratorInterface
                 schema: $propSchema,
             );
 
-            // Apply property-level plugins
             foreach ($this->propertyPlugins as $plugin) {
                 $result = $plugin->process(new PropertyExtensionContext($propCtx, $propSchema->extensions));
                 if ($result !== null) {
@@ -350,6 +349,60 @@ class ModelGenerator implements GeneratorInterface
         }
 
         return $contexts;
+    }
+
+    /**
+     * Flatten direct and composed properties for a schema.
+     *
+     * @param array<string, bool> $visitedRefs
+     *
+     * @return array{0: array<string, Schema>, 1: string[]}
+     */
+    private function flattenSchemaProperties(
+        Schema $schema,
+        Components $components,
+        array $visitedRefs = [],
+    ): array {
+        $properties = [];
+        $required = $schema->required;
+
+        foreach ($schema->allOf as $sub) {
+            if ($sub->ref !== null) {
+                $refName = $this->extractRefName($sub->ref);
+                if ($refName === '' || isset($visitedRefs[$refName])) {
+                    continue;
+                }
+
+                $refSchema = $components->schemas[$refName] ?? null;
+                if ($refSchema === null) {
+                    continue;
+                }
+
+                [$refProperties, $refRequired] = $this->flattenSchemaProperties(
+                    $refSchema,
+                    $components,
+                    $visitedRefs + [$refName => true],
+                );
+
+                foreach ($refProperties as $name => $propSchema) {
+                    $properties[$name] = $propSchema;
+                }
+                $required = array_unique(array_merge($required, $refRequired));
+                continue;
+            }
+
+            [$subProperties, $subRequired] = $this->flattenSchemaProperties($sub, $components, $visitedRefs);
+            foreach ($subProperties as $name => $propSchema) {
+                $properties[$name] = $propSchema;
+            }
+            $required = array_unique(array_merge($required, $subRequired));
+        }
+
+        foreach ($schema->properties as $name => $propSchema) {
+            $properties[$name] = $propSchema;
+        }
+
+        return [$properties, $required];
     }
 
     /**
@@ -434,6 +487,90 @@ class ModelGenerator implements GeneratorInterface
         }
 
         return $merged;
+    }
+
+    /**
+     * @return array<string, string> map discriminator value => generated class short name
+     */
+    private function buildDiscriminatorCases(
+        string $schemaName,
+        Schema $schema,
+        Components $components,
+        ImportManager $imports,
+    ): array {
+        if ($schema->discriminator === null || $schema->discriminator->propertyName === '') {
+            return [];
+        }
+
+        $cases = [];
+
+        // Prefer explicit discriminator mappings from the schema itself.
+        foreach ($schema->discriminator->mapping as $discValue => $mapped) {
+            $refName = $this->normalizeDiscriminatorTargetName($mapped);
+            if ($refName === '' || !isset($components->schemas[$refName])) {
+                continue;
+            }
+            $fqcn = $this->naming->modelNamespace() . '\\' . $this->naming->className($refName);
+            $cases[(string) $discValue] = $imports->add($fqcn);
+        }
+
+        // If parent discriminator has no explicit mapping, infer from extending allOf schemas.
+        if ($cases !== []) {
+            return $cases;
+        }
+
+        $children = [];
+        foreach ($components->schemas as $name => $candidate) {
+            $candidateParent = $this->resolveParentRefName($candidate);
+            if ($candidateParent === $schemaName) {
+                $children[] = $name;
+            }
+        }
+
+        foreach ($children as $childName) {
+            $discValue = $this->inferDiscriminatorValue($schemaName, $childName);
+            if ($discValue === '') {
+                continue;
+            }
+            $fqcn = $this->naming->modelNamespace() . '\\' . $this->naming->className($childName);
+            $cases[$discValue] = $imports->add($fqcn);
+        }
+
+        return $cases;
+    }
+
+    private function normalizeDiscriminatorTargetName(string $target): string
+    {
+        if (str_contains($target, '/')) {
+            return $this->extractRefName($target);
+        }
+
+        return $target;
+    }
+
+    private function inferDiscriminatorValue(string $parentName, string $childName): string
+    {
+        $suffix = $this->extractTrailingWord($parentName);
+        $base = $childName;
+
+        if ($suffix !== '' && str_ends_with($childName, $suffix)) {
+            $base = substr($childName, 0, -strlen($suffix));
+        }
+
+        if ($base === '') {
+            return '';
+        }
+
+        return strtolower((string) preg_replace('/(?<!^)[A-Z]/', '_$0', $base));
+    }
+
+    private function extractTrailingWord(string $name): string
+    {
+        if (preg_match('/([A-Z][a-z0-9]*)$/', $name, $m) === 1) {
+            return $m[1];
+        }
+
+        return '';
     }
 
     private function resolvePhpType(Schema $propSchema, ImportManager $imports, Components $components): string
