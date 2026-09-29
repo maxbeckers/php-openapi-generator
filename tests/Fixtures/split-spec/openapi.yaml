@@ -1,0 +1,18 @@
+openapi: 3.0.0
+info:
+  title: Split API
+  version: 1.0.0
+paths:
+  /users/{userId}:
+    $ref: './paths/user.yaml'
+components:
+  schemas:
+    User:
+      $ref: './components/models.json#/components/schemas/User'
+    Address:
+      $ref: './components/models.json#/components/schemas/Address'
+    EscapedPointer:
+      $ref: './components/models.json#/$defs/Escaped~1Name~0Value'
+  securitySchemes:
+    BearerAuth:
+      $ref: './components/security.yaml#/components/securitySchemes/BearerAuth'

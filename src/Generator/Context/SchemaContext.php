@@ -30,21 +30,20 @@ class SchemaContext
      * @param ImportManager $imports Manages use-statement deduplication
      */
     public function __construct(
-        public readonly string        $schemaName,
-        public readonly string        $className,
-        public readonly string        $namespace,
-        public readonly SchemaKind    $kind,
-        public readonly Schema        $schema,
-        public array                  $properties,
-        public array                  $circularProperties,
-        public ?string                $parentClass,
-        public array                  $parentConstructorProperties,
-        public array                  $constructorProperties,
-        public array                  $discriminatorCases,
-        public array                  $implementsInterfaces,
-        public array                  $unionTypes,
+        public readonly string $schemaName,
+        public readonly string $className,
+        public readonly string $namespace,
+        public readonly SchemaKind $kind,
+        public readonly Schema $schema,
+        public array $properties,
+        public array $circularProperties,
+        public ?string $parentClass,
+        public array $parentConstructorProperties,
+        public array $constructorProperties,
+        public array $discriminatorCases,
+        public array $implementsInterfaces,
+        public array $unionTypes,
         public readonly ImportManager $imports,
-    )
-    {
+    ) {
     }
 }

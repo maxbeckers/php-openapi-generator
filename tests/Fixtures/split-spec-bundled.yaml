@@ -1,0 +1,81 @@
+openapi: 3.0.0
+info:
+  title: Split API
+  version: 1.0.0
+paths:
+  /users/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      operationId: getUser
+      tags:
+        - users
+      parameters:
+        - $ref: '#/components/parameters/Verbose'
+      responses:
+        '200':
+          $ref: '#/components/responses/UserResponse'
+    post:
+      operationId: updateUser
+      tags:
+        - users
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateUser'
+      responses:
+        '200':
+          $ref: '#/components/responses/UserResponse'
+components:
+  schemas:
+    User:
+      type: object
+      required:
+        - id
+        - address
+      properties:
+        id:
+          type: integer
+          format: int64
+        address:
+          $ref: '#/components/schemas/Address'
+    Address:
+      type: object
+      required:
+        - street
+      properties:
+        street:
+          type: string
+    EscapedPointer:
+      type: string
+      enum:
+        - resolved
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+    Verbose:
+      name: verbose
+      in: query
+      schema:
+        type: boolean
+  requestBodies:
+    UpdateUser:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/User'
+  responses:
+    UserResponse:
+      description: A user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/User'
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

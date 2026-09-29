@@ -1,0 +1,16 @@
+{
+  "components": {
+    "requestBodies": {
+      "UpdateUser": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./models.json#/components/schemas/User"
+            }
+          }
+        }
+      }
+    }
+  }
+}

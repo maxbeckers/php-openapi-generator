@@ -1,0 +1,21 @@
+{
+  "components": {
+    "parameters": {
+      "UserId": {
+        "name": "userId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Verbose": {
+        "name": "verbose",
+        "in": "query",
+        "schema": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "components": {
+    "schemas": {
+      "User": {
+        "type": "object",
+        "required": ["id", "address"],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "address": {
+            "$ref": "#/components/schemas/Address"
+          }
+        }
+      },
+      "Address": {
+        "type": "object",
+        "required": ["street"],
+        "properties": {
+          "street": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Escaped/Name~Value": {
+      "type": "string",
+      "enum": ["resolved"]
+    }
+  }
+}

@@ -24,6 +24,7 @@ This package is designed for teams that want generated code to feel like hand-wr
 - DTO hydration/serialization helpers (`fromArray()` and `toArray()`)
 - Operation filtering by tags, operation IDs, and path patterns
 - Extension plugin system for `x-*` vendor extensions (for example `x-trim`)
+- Local external `$ref` support across YAML and JSON documents
 
 ## Requirements
 
@@ -168,6 +169,29 @@ Optional: set `$config->httpClientVersion` when adapter major versions require d
 
 - `examples/petstore-client-symfony`
 - `examples/petstore-server-symfony`
+
+### Split OpenAPI specifications
+
+`$ref` values may point to YAML or JSON files relative to the document that
+declares the reference. JSON Pointer fragments, including escaped `~0` and
+`~1` tokens, are supported:
+
+```yaml
+components:
+  schemas:
+    User:
+      $ref: './schemas/models.json#/components/schemas/User'
+```
+
+Nested references are resolved relative to each referenced document. Parsed
+documents are cached for one `loadFile()` call. By default, references must
+remain inside the root specification's directory; applications that explicitly
+trust files outside that tree can construct
+`new OpenApiLoader(new LocalReferenceResolver(true))`.
+
+Remote URI references, query strings, and `$ref` objects with sibling fields
+are rejected. `load(array $data)` remains intended for self-contained,
+already-parsed specifications and does not resolve external references.
 
 ## Documentation
 

@@ -18,32 +18,19 @@ use MaxBeckers\OpenApiGenerator\Spec\Schema;
 use MaxBeckers\OpenApiGenerator\Spec\SecurityScheme;
 use MaxBeckers\OpenApiGenerator\Spec\Server;
 use MaxBeckers\OpenApiGenerator\Spec\Tag;
-use MaxBeckers\YamlParser\YamlParser;
 
 class OpenApiLoader
 {
+    public function __construct(private readonly ?LocalReferenceResolver $referenceResolver = null)
+    {
+    }
+
     /**
      * Load an OpenAPI spec from a file path (YAML or JSON).
      */
     public function loadFile(string $path): OpenApiSpec
     {
-        if (!file_exists($path)) {
-            throw new \InvalidArgumentException(sprintf('OpenAPI spec file not found: %s', $path));
-        }
-
-        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-
-        if ($extension === 'json') {
-            $raw = json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
-        } else {
-            $parser = new YamlParser();
-            $raw = $parser->parse(file_get_contents($path));
-            $raw = $this->normalise($raw);
-
-            if (is_array($raw) && !isset($raw['openapi']) && isset($raw[0]) && is_array($raw[0])) {
-                $raw = $raw[0];
-            }
-        }
+        $raw = ($this->referenceResolver ?? new LocalReferenceResolver())->resolve($path);
 
         return $this->load($raw);
     }
@@ -530,28 +517,6 @@ class OpenApiLoader
         return array_filter($data, function ($key) {
             return str_starts_with($key, 'x-');
         }, ARRAY_FILTER_USE_KEY);
-    }
-
-    /**
-     * Recursively normalise ArrayObject / Traversable to plain PHP arrays.
-     *
-     * @param mixed $value
-     *
-     * @return mixed
-     */
-    private function normalise(mixed $value): mixed
-    {
-        if ($value instanceof \Traversable) {
-            $value = iterator_to_array($value);
-        }
-
-        if (is_array($value)) {
-            return array_map(function ($v) {
-                return $this->normalise($v);
-            }, $value);
-        }
-
-        return $value;
     }
 
 }

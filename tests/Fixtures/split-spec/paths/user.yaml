@@ -1,0 +1,20 @@
+parameters:
+  - $ref: '../components/parameters.json#/components/parameters/UserId'
+get:
+  operationId: getUser
+  tags:
+    - users
+  parameters:
+    - $ref: '../components/parameters.json#/components/parameters/Verbose'
+  responses:
+    '200':
+      $ref: '../components/responses.yaml#/components/responses/UserResponse'
+post:
+  operationId: updateUser
+  tags:
+    - users
+  requestBody:
+    $ref: '../components/request-bodies.json#/components/requestBodies/UpdateUser'
+  responses:
+    '200':
+      $ref: '../components/responses.yaml#/components/responses/UserResponse'
