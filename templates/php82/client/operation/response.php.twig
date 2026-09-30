@@ -1,0 +1,106 @@
+        $statusCode = $response->getStatusCode();
+{% if config.typedErrorResponses %}
+        if ($statusCode < 200 || $statusCode >= 300) {
+            $errorBody = {{ responseBody }};
+            $payload = $this->decodeErrorPayload({{ responseContentType }}, $errorBody);
+{% set errorArms = op.errorModelArms() %}
+{% if errorArms is not empty %}
+
+            try {
+                $payload = match (true) {
+{% for arm in errorArms %}
+                    is_array($payload){% if arm[0] != 'true' %} && {{ arm[0] }}{% endif %} => {{ arm[1] }}::fromResponseArray($payload),
+{% endfor %}
+                    default => $payload,
+                };
+            } catch (\Throwable) {
+                // Keep the decoded payload when it does not match the documented error model.
+            }
+{% endif %}
+
+            throw $this->createApiException($statusCode, '{{ op.operationId }}', $errorBody, $payload);
+        }
+{% else %}
+        $this->assertSuccessfulStatus($statusCode, '{{ op.operationId }}');
+{% endif %}
+{% if op.returnType == 'void' %}
+        // {{ op.successCodes|join(', ') }}
+{% else %}
+{% set emptyCodes = op.emptySuccessCodes() %}
+{% if emptyCodes is not empty %}
+        if (in_array($statusCode, [{{ emptyCodes|join(', ') }}], true)) {
+            return null;
+        }
+{% endif %}
+        $data = $this->decodeJsonResponse({{ responseContentType }}, {{ responseBody }}, '{{ op.operationId }}');
+{% if op.returnType == 'mixed' %}
+
+        return $data;
+{% elseif op.returnsArray %}
+        if (!is_array($data) || !array_is_list($data)) {
+            throw new \UnexpectedValueException('Expected a JSON array response for {{ op.operationId }}.');
+        }
+{% set itemType = op.shortReturnItemType() %}
+{% if '\\' in op.returnType %}
+        $result = [];
+        foreach ($data as $item) {
+            if (!is_array($item)) {
+                throw new \UnexpectedValueException('Expected each {{ op.operationId }} response item to be a JSON object.');
+            }
+            $result[] = {{ itemType }}::fromResponseArray($item);
+        }
+{% elseif itemType == 'mixed' %}
+        $result = $data;
+{% else %}
+        $result = [];
+        foreach ($data as $item) {
+{% if itemType == 'float' %}
+            if (!is_int($item) && !is_float($item)) {
+{% else %}
+            if (!is_{{ itemType }}($item)) {
+{% endif %}
+                throw new \UnexpectedValueException('Expected each {{ op.operationId }} response item to be of type {{ itemType }}.');
+            }
+            $result[] = {% if itemType == 'float' %}(float) {% endif %}$item;
+        }
+{% endif %}
+{% elseif not op.returnsModel() %}
+{% set scalarType = op.returnType %}
+{% if scalarType == 'float' %}
+        if (!is_int($data) && !is_float($data)) {
+{% else %}
+        if (!is_{{ scalarType }}($data)) {
+{% endif %}
+            throw new \UnexpectedValueException('Expected a JSON {{ scalarType }} response for {{ op.operationId }}.');
+        }
+
+        return {% if scalarType == 'float' %}(float) {% endif %}$data;
+{% else %}
+        if (!is_array($data)) {
+            throw new \UnexpectedValueException('Expected a JSON object response for {{ op.operationId }}.');
+        }
+{% if op.returnTypes|length > 1 %}
+        $result = match ($statusCode) {
+{% for code, type in op.typedSuccessCodes() %}
+            {{ code }} => {{ type }}::fromResponseArray($data),
+{% endfor %}
+            default => throw new \UnexpectedValueException(sprintf(
+                'Unexpected HTTP status %d for operation "%s".',
+                $statusCode,
+                '{{ op.operationId }}',
+            )),
+        };
+{% else %}
+        $result = {{ op.shortReturnItemType() }}::fromResponseArray($data);
+{% endif %}
+{% endif %}
+{% if op.returnType != 'mixed' and (op.returnsArray or op.returnsModel()) %}
+{% if config.validationStrategy.name == 'NativeMethod' and config.validateClientResponse %}
+        $this->validateNativeResponsePayload($result);
+{% elseif config.validationStrategy.name == 'SymfonyConstraints' and config.validateClientResponse %}
+        $this->validateSymfonyResponsePayload($result);
+{% endif %}
+
+        return $result;
+{% endif %}
+{% endif %}

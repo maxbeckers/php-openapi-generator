@@ -9,6 +9,7 @@ use MaxBeckers\OpenApiGenerator\Config\GeneratorConfig;
 use MaxBeckers\OpenApiGenerator\FileWriter\FileWriter;
 use MaxBeckers\OpenApiGenerator\Loader\OpenApiLoader;
 use MaxBeckers\OpenApiGenerator\Service\OpenApiService;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class SplitSpecGenerationTest extends TestCase
@@ -46,6 +47,35 @@ class SplitSpecGenerationTest extends TestCase
         self::assertStringContainsString('function getUser(int $userId, ?bool $verbose', $api);
         self::assertStringContainsString(': User;', $api);
         self::assertStringContainsString('function updateUser(int $userId, User $body)', $api);
+    }
+
+    /**
+     * @return iterable<string, array{GenerationTarget}>
+     */
+    public static function generationTargets(): iterable
+    {
+        foreach (GenerationTarget::cases() as $target) {
+            yield $target->value => [$target];
+        }
+    }
+
+    #[DataProvider('generationTargets')]
+    public function testSplitReferencesWorkForEveryGenerationTarget(GenerationTarget $target): void
+    {
+        $config = $this->makeConfig('split-spec/openapi.yaml', $this->outputDirectory);
+        $config->generationTarget = $target;
+        (new OpenApiService(new OpenApiLoader(), new FileWriter()))->generate(
+            $config,
+            __DIR__ . '/../Fixtures',
+        );
+
+        self::assertFileExists($this->outputDirectory . '/Model/User.php');
+        self::assertFileExists($this->outputDirectory . '/Model/Address.php');
+        $apiSuffix = $target === GenerationTarget::Client ? 'UsersApiClientInterface.php' : 'UsersApiInterface.php';
+        self::assertFileExists($this->outputDirectory . '/Api/' . $apiSuffix);
+        $api = (string) file_get_contents($this->outputDirectory . '/Api/' . $apiSuffix);
+        self::assertStringContainsString('getUser', $api);
+        self::assertStringContainsString('updateUser', $api);
     }
 
     public function testSplitSpecGeneratesTheSamePhpAsBundledSpec(): void

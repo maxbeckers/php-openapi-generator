@@ -1,5 +1,6 @@
 {% macro renderDocblock(op, indent) %}
-{% if op.deprecated or op.summary is not null or op.description is not null %}
+{% set documentedParams = op.allParams()|filter(p => p.docType is not null or p.deprecated) %}
+{% if op.deprecated or op.summary is not null or op.description is not null or op.returnsArray or documentedParams is not empty %}
 {{ indent }}/**
 {% if op.deprecated %}
 {{ indent }} * @deprecated
@@ -11,10 +12,28 @@
 {{ indent }} *
 {{ indent }} * {{ op.description|raw }}
 {% endif %}
+{% set returnDocType = null %}
+{% if op.returnsArray %}
+{% set itemType = op.returnType|slice(0, op.returnType|length - 2) %}
+{% set returnDocType = 'list<' ~ ('\\' in itemType ? '\\' : '') ~ itemType ~ '>' ~ (op.returnsNullable ? '|null' : '') %}
+{% endif %}
+{% set maxDocTypeLength = returnDocType is not null ? returnDocType|length : 0 %}
+{% for p in documentedParams %}
+{% set paramDocType = p.docType ?? p.signatureType() %}
+{% if paramDocType|length > maxDocTypeLength %}
+{% set maxDocTypeLength = paramDocType|length %}
+{% endif %}
+{% endfor %}
+{% for p in documentedParams %}
+{% set paramDocType = p.docType ?? p.signatureType() %}
+{{ indent }} * @param {% if returnDocType is not null %} {% endif %}{{ ('%-' ~ maxDocTypeLength ~ 's')|format(paramDocType)|raw }} ${{ p.name }}{% if p.deprecated %} (deprecated: "{{ p.wireName }}"){% endif %}{{ "\n" }}{% endfor %}
+{% if returnDocType is not null %}
+{{ indent }} * @return {{ returnDocType|raw }}
+{% endif %}
 {{ indent }} */
 {% endif %}
 {% endmacro %}
 
-{% macro renderSignature(op, bodyNullable) %}
-public function {{ op.operationId }}({% for p in op.allParams() %}{% if not loop.first %}, {% endif %}{{ p.phpType }} ${{ p.name }}{% endfor %}{% if op.requestBodyType is not null %}{% if op.allParams() is not empty %}, {% endif %}{{ op.requestBodyType|split('\\')|last }}{% if bodyNullable and not op.requestBodyRequired %}?{% endif %} $body{% endif %}): {% if op.returnsArray %}array{% else %}{{ op.returnType|split('\\')|last }}{% endif %}
+{% macro renderSignature(op) %}
+public function {{ op.operationId }}({% for p in op.allParams() %}{% if not loop.first %}, {% endif %}{{ p.signatureType() }} ${{ p.name }}{% endfor %}{% if op.requestBodyType is not null %}{% if op.allParams() is not empty %}, {% endif %}{% if not op.requestBodyRequired %}?{% endif %}{{ op.requestBodyType|split('\\')|last }} $body{% endif %}): {{ op.signatureReturnType() }}
 {% endmacro %}

@@ -20,7 +20,6 @@ $config->generateFromArray = true;
 $config->generateToArray = true;
 $config->generationTarget = GenerationTarget::Server;
 $config->frameworkTarget = FrameworkTarget::Symfony;
-$config->frameworkVersion = '7.4';
 $config->validateServerRequest = true;
 $config->validationStrategy = ValidationStrategy::SymfonyConstraints;
 

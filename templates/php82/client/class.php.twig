@@ -1,34 +1,260 @@
 {% import 'shared/api-operation-macros.php.twig' as operation %}
 {% import 'shared/payload-validation-macros.php.twig' as payloadValidation %}
 {% import 'shared/generation-meta-macros.php.twig' as generation %}
+{% set hasParameterValues = group.operations|filter(op => op.allParams() is not empty)|length > 0 %}
+{% set hasRequestBodies = group.operations|filter(op => op.requestBodyType is not null)|length > 0 %}
+{% set hasResponsePayloads = group.operations|filter(op => op.returnType != 'void')|length > 0 %}
+{% set needsClientPayloadValidation = (config.validateClientRequest and hasParameterValues) or (config.validateClientResponse and hasResponsePayloads) %}
+{% set needsClientRequestValidation = config.validateClientRequest and hasRequestBodies %}
+{% set needsSymfonyValidator = config.validationStrategy.name == 'SymfonyConstraints' and (needsClientPayloadValidation or needsClientRequestValidation) %}
 <?php
 
 declare(strict_types=1);
 
 namespace {{ group.namespace }};
 
-{% if config.httpClient.value == 'symfony' %}
-use Symfony\Contracts\HttpClient\HttpClientInterface;
-{% elseif config.httpClient.value == 'guzzle' %}
+{% for use in useStatements %}
+{{ use }}
+{% endfor %}
+{% if config.httpClient.value == 'guzzle' %}
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\RequestOptions;
 {% elseif config.httpClient.value == 'psr18' %}
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
+{% if hasRequestBodies %}
 use Psr\Http\Message\StreamFactoryInterface;
 {% endif %}
-{% for use in useStatements %}
-{{ use }}
-{% endfor %}
-{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateClientRequest or config.validateClientResponse) %}
-use Symfony\Component\Validator\Validator\ValidatorInterface;
+{% endif %}
+{% if needsSymfonyValidator %}
 use Symfony\Component\Validator\Validation;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+{% endif %}
+{% if config.httpClient.value == 'symfony' %}
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 {% endif %}
 
 {{ generation.renderFileHeader(generationMeta, '') }}
+
 final class {{ group.className }}Client implements {{ group.className }}ClientInterface
 {
-{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateClientRequest or config.validateClientResponse) %}
+{% set securityKinds = group.securityKinds() %}
+{% set hasQueryParameters = group.operations|filter(op => op.queryParams is not empty)|length > 0 or 'apiKey:query' in securityKinds %}
+{% if hasQueryParameters or group.operations|filter(op => op.headerParams is not empty or op.cookieParams is not empty)|length > 0 %}
+    private function serializeParameterValue(mixed $value): string
+    {
+        if ($value instanceof \BackedEnum) {
+            $value = $value->value;
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format(\DateTimeInterface::ATOM);
+        }
+
+        if (!is_scalar($value)) {
+            throw new \InvalidArgumentException(sprintf(
+                'HTTP parameter values must be scalar; %s given.',
+                get_debug_type($value),
+            ));
+        }
+
+        return (string) $value;
+    }
+
+{% endif %}
+{% if hasQueryParameters %}
+    /**
+     * Serializes query parameters according to their OpenAPI style and explode settings.
+     *
+     * @param list<array{string, mixed, string, bool}> $parameters
+     */
+    private function buildQueryString(array $parameters): string
+    {
+        $pairs = [];
+        foreach ($parameters as [$name, $value, $style, $explode]) {
+            if ($value === null) {
+                continue;
+            }
+
+            $encodedName = rawurlencode($name);
+            if (!is_array($value)) {
+                $pairs[] = $encodedName . '=' . rawurlencode($this->serializeParameterValue($value));
+
+                continue;
+            }
+
+            if ($style === 'deepObject') {
+                foreach ($value as $key => $item) {
+                    $pairs[] = $encodedName . '[' . rawurlencode((string) $key) . ']='
+                        . rawurlencode($this->serializeParameterValue($item));
+                }
+
+                continue;
+            }
+
+            $items = array_map(
+                fn(mixed $item): string => rawurlencode($this->serializeParameterValue($item)),
+                array_values($value),
+            );
+            if ($style === 'form' && $explode) {
+                foreach ($items as $item) {
+                    $pairs[] = $encodedName . '=' . $item;
+                }
+
+                continue;
+            }
+
+            if ($items === []) {
+                continue;
+            }
+
+            $delimiter = match ($style) {
+                'spaceDelimited' => '%20',
+                'pipeDelimited' => '%7C',
+                default => ',',
+            };
+            $pairs[] = $encodedName . '=' . implode($delimiter, $items);
+        }
+
+        return implode('&', $pairs);
+    }
+
+{% endif %}
+{% if config.typedErrorResponses %}
+    private function decodeErrorPayload(string $contentType, string $body): mixed
+    {
+        if ($body === '' || ($contentType !== '' && !str_contains(strtolower($contentType), 'json'))) {
+            return null;
+        }
+
+        try {
+            return json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+    }
+
+    private function createApiException(int $statusCode, string $operationId, string $responseBody, mixed $payload): ApiException
+    {
+        $message = sprintf('API operation "%s" failed with HTTP status %d.', $operationId, $statusCode);
+{% set groupErrorClasses = {} %}
+{% for op in group.operations %}
+{% for code, exceptionClass in op.errorExceptionClasses() %}
+{% set groupErrorClasses = groupErrorClasses|merge({('s' ~ code): {code: code, name: exceptionClass}}) %}
+{% endfor %}
+{% endfor %}
+{% if groupErrorClasses is empty %}
+
+        return new ApiException($message, $statusCode, $operationId, $responseBody, $payload);
+{% else %}
+
+        return match ($statusCode) {
+{% for entry in groupErrorClasses|sort((a, b) => a.code <=> b.code) %}
+            {{ entry.code }} => new {{ entry.name }}($message, $statusCode, $operationId, $responseBody, $payload),
+{% endfor %}
+            default => new ApiException($message, $statusCode, $operationId, $responseBody, $payload),
+        };
+{% endif %}
+    }
+{% else %}
+    private function assertSuccessfulStatus(int $statusCode, string $operationId): void
+    {
+        if ($statusCode < 200 || $statusCode >= 300) {
+            throw new \RuntimeException(sprintf(
+                'API operation "%s" failed with HTTP status %d.',
+                $operationId,
+                $statusCode,
+            ));
+        }
+    }
+{% endif %}
+{% if group.securitySchemes is not empty %}
+
+    /**
+     * Picks the first security requirement alternative whose credentials are configured.
+     *
+     * @param list<list<string>> $alternatives
+     *
+     * @return array{headers: array<string, string>, query: list<array{string, string, string, bool}>, cookies: list<string>}
+     */
+    private function resolveSecurity(array $alternatives): array
+    {
+        $security = ['headers' => [], 'query' => [], 'cookies' => []];
+        $credentials = $this->credentials;
+        if ($credentials === null) {
+            return $security;
+        }
+
+        foreach ($alternatives as $schemes) {
+            $candidate = $security;
+            foreach ($schemes as $scheme) {
+{% for scheme in group.securitySchemes %}
+                {% if not loop.first %}} else{% endif %}if ($scheme === '{{ scheme.name }}') {
+{% if scheme.kind == 'basic' %}
+                    if ($credentials->{{ scheme.propertyName }}Username === null || $credentials->{{ scheme.propertyName }}Password === null) {
+                        continue 2;
+                    }
+                    $candidate['headers']['Authorization'] = 'Basic ' . base64_encode(
+                        $credentials->{{ scheme.propertyName }}Username . ':' . $credentials->{{ scheme.propertyName }}Password,
+                    );
+{% elseif scheme.kind == 'apiKey' %}
+                    if ($credentials->{{ scheme.propertyName }} === null) {
+                        continue 2;
+                    }
+{% if scheme.in == 'query' %}
+                    $candidate['query'][] = ['{{ scheme.parameterName }}', $credentials->{{ scheme.propertyName }}, 'form', true];
+{% elseif scheme.in == 'cookie' %}
+                    $candidate['cookies'][] = '{{ scheme.parameterName }}=' . rawurlencode($credentials->{{ scheme.propertyName }});
+{% else %}
+                    $candidate['headers']['{{ scheme.parameterName }}'] = $credentials->{{ scheme.propertyName }};
+{% endif %}
+{% else %}
+                    if ($credentials->{{ scheme.propertyName }}Token === null) {
+                        continue 2;
+                    }
+                    $candidate['headers']['Authorization'] = '{{ scheme.kind == 'bearer' ? 'Bearer' : scheme.httpScheme }} ' . $credentials->{{ scheme.propertyName }}Token;
+{% endif %}
+{% endfor %}
+                } else {
+                    continue 2;
+                }
+            }
+
+            return $candidate;
+        }
+
+        return $security;
+    }
+{% endif %}
+
+{% if hasResponsePayloads %}
+    private function decodeJsonResponse(string $contentType, string $body, string $operationId): mixed
+    {
+        if ($contentType !== '' && !str_contains(strtolower($contentType), 'json')) {
+            throw new \UnexpectedValueException(sprintf(
+                'Expected a JSON response for operation "%s", got content type "%s".',
+                $operationId,
+                $contentType,
+            ));
+        }
+
+        try {
+            return json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw new \UnexpectedValueException(sprintf(
+                'Invalid JSON response for operation "%s": %s',
+                $operationId,
+                $exception->getMessage(),
+            ), 0, $exception);
+        }
+    }
+
+{% endif %}
+{% if needsSymfonyValidator %}
     private readonly ValidatorInterface $validator;
 
 {% endif %}
@@ -37,28 +263,46 @@ final class {{ group.className }}Client implements {{ group.className }}ClientIn
         private readonly string $baseUrl,
 {% if config.httpClient.value == 'psr18' %}
         private readonly RequestFactoryInterface $requestFactory,
+{% if hasRequestBodies %}
         private readonly StreamFactoryInterface $streamFactory,
 {% endif %}
-{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateClientRequest or config.validateClientResponse) %}
+{% endif %}
+{% if needsSymfonyValidator %}
         ?ValidatorInterface $validator = null,
 {% endif %}
+{% if group.securitySchemes is not empty %}
+        private readonly ?ApiCredentials $credentials = null,
+{% endif %}
+{% if needsSymfonyValidator %}
     ) {
-{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateClientRequest or config.validateClientResponse) %}
         $this->validator = $validator ?? Validation::createValidatorBuilder()
             ->enableAttributeMapping()
             ->getValidator();
-{% endif %}
     }
-
+{% else %}
+    ) {}
+{% endif %}
 {% if config.validationStrategy.name == 'NativeMethod' and (config.validateClientRequest or config.validateClientResponse) %}
-{{ payloadValidation.renderNativePayloadMethod('    ') }}
+
+{{ payloadValidation.renderNativePayloadMethod(
+    '    ',
+    config.validateClientRequest and hasParameterValues,
+    needsClientRequestValidation,
+    config.validateClientResponse and hasResponsePayloads
+)|trim("\n", 'right') }}
 {% endif %}
 {% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateClientRequest or config.validateClientResponse) %}
-{{ payloadValidation.renderSymfonyPayloadMethod('    ') }}
-{% endif %}
 
+{{ payloadValidation.renderSymfonyPayloadMethod(
+    '    ',
+    config.validateClientRequest and hasParameterValues,
+    needsClientRequestValidation,
+    config.validateClientResponse and hasResponsePayloads
+)|trim("\n", 'right') }}
+{% endif %}
 {% for op in group.operations %}
-{% set signature = operation.renderSignature(op, false)|trim("\n\r") %}
+
+{{ operation.renderDocblock(op, '    ') }}{% set signature = operation.renderSignature(op)|trim("\n\r") %}
     {{ signature }}
     {
 {% if config.validationStrategy.name == 'NativeMethod' and config.validateClientRequest %}
@@ -76,13 +320,87 @@ final class {{ group.className }}Client implements {{ group.className }}ClientIn
         $this->validateSymfonyRequestPayload($body);
 {% endif %}
 {% endif %}
-{% set hasQuery = op.queryParams is not empty %}
-{% if hasQuery %}
-        $query = array_filter([
-{% for p in op.queryParams %}
-            '{{ p.wireName }}' => ${{ p.name }},
+{% set isSecured = op.security is not null %}
+{% set opSecurityKinds = group.securityKinds(op) %}
+{% if isSecured %}
+        $security = $this->resolveSecurity([
+{% for alternative in op.security %}
+            [{% for schemeName in alternative %}'{{ schemeName }}'{% if not loop.last %}, {% endif %}{% endfor %}],
 {% endfor %}
-        ], fn($v) => $v !== null);
+        ]);
+{% endif %}
+{% set hasSecurityQuery = isSecured and 'apiKey:query' in opSecurityKinds %}
+{% set hasQuery = op.queryParams is not empty or hasSecurityQuery %}
+{% if hasQuery %}
+        $queryString = $this->buildQueryString([
+{% for p in op.queryParams %}
+            ['{{ p.wireName }}', {{ p.wireValueExpression() }}, '{{ p.style }}', {{ p.explode ? 'true' : 'false' }}],
+{% endfor %}
+{% if hasSecurityQuery %}
+            ...$security['query'],
+{% endif %}
+        ]);
+{% endif %}
+        $url = rtrim($this->baseUrl, '/') . {{ op.phpPath }}{% if hasQuery %} . ($queryString === '' ? '' : '?' . $queryString){% endif %};
+{% set hasSecurityCookies = isSecured and 'apiKey:cookie' in opSecurityKinds %}
+{% set hasCookies = op.cookieParams is not empty or hasSecurityCookies %}
+{% set hasHeaders = op.headerParams is not empty or hasCookies or isSecured %}
+{% if op.headerParams is not empty %}
+        $headers = array_filter([
+{% for p in op.headerParams %}
+{% if p.isArray() %}
+{% set serialized = "implode(',', array_map(fn($value) => $this->serializeParameterValue($value), $" ~ p.name ~ "))" %}
+{% else %}
+{% set serialized = "$this->serializeParameterValue(" ~ p.wireValueExpression(false) ~ ")" %}
+{% endif %}
+{% if p.required %}
+            '{{ p.wireName }}' => {{ serialized }},
+{% else %}
+            '{{ p.wireName }}' => ${{ p.name }} === null ? null : {{ serialized }},
+{% endif %}
+{% endfor %}
+        ], static fn($value) => $value !== null);
+{% if isSecured %}
+        $headers = array_merge($headers, $security['headers']);
+{% endif %}
+{% elseif isSecured %}
+        $headers = $security['headers'];
+{% elseif hasCookies %}
+        $headers = [];
+{% endif %}
+{% if hasCookies %}
+{% if op.cookieParams is empty %}
+        $cookies = $security['cookies'];
+{% else %}
+        $cookies = [];
+{% endif %}
+{% for p in op.cookieParams %}
+{% if not p.required %}
+        if (${{ p.name }} !== null) {
+{% endif %}
+{% if p.isArray() %}
+        {% if not p.required %}    {% endif %}foreach (${{ p.name }} as $cookieValue) {
+        {% if not p.required %}    {% endif %}    $cookies[] = '{{ p.wireName }}=' . rawurlencode($this->serializeParameterValue($cookieValue));
+        {% if not p.required %}    {% endif %}}
+{% else %}
+        {% if not p.required %}    {% endif %}$cookies[] = '{{ p.wireName }}=' . rawurlencode($this->serializeParameterValue({{ p.wireValueExpression(false) }}));
+{% endif %}
+{% if not p.required %}
+        }
+{% endif %}
+{% endfor %}
+{% if hasSecurityCookies and op.cookieParams is not empty %}
+        $cookies = array_merge($cookies, $security['cookies']);
+{% endif %}
+        if ($cookies !== []) {
+{% if op.headerParams|filter(p => p.wireName|lower == 'cookie')|length > 0 %}
+            $headers['Cookie'] = isset($headers['Cookie'])
+                ? $headers['Cookie'] . '; ' . implode('; ', $cookies)
+                : implode('; ', $cookies);
+{% else %}
+            $headers['Cookie'] = implode('; ', $cookies);
+{% endif %}
+        }
 {% endif %}
 {% if config.httpClient.value == 'symfony' %}
 {% include 'client/operation/symfony.php.twig' %}
@@ -92,6 +410,5 @@ final class {{ group.className }}Client implements {{ group.className }}ClientIn
 {% include 'client/operation/psr18.php.twig' %}
 {% endif %}
     }
-
 {% endfor %}
 }

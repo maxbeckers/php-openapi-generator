@@ -21,7 +21,6 @@ $config->generateFromArray = true;
 $config->generateToArray = true;
 $config->generationTarget = GenerationTarget::Client;
 $config->httpClient = HttpClientAdapter::SymfonyHttpClient;
-$config->httpClientVersion = '7.4';
 $config->validateClientResponse = true;
 $config->validationStrategy = ValidationStrategy::LaravelValidation;
 

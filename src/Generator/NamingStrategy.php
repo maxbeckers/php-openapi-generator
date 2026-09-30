@@ -40,6 +40,7 @@ class NamingStrategy
     public function className(string $schemaName): string
     {
         $name = $this->config->classPrefix . $this->toPascalCase($schemaName) . $this->config->classSuffix;
+        $name = $this->ensureIdentifier($name, 'Schema');
 
         return $this->escapeReservedWord($name);
     }
@@ -48,6 +49,7 @@ class NamingStrategy
     public function enumName(string $schemaName): string
     {
         $name = $this->config->classPrefix . $this->toPascalCase($schemaName) . $this->config->enumSuffix;
+        $name = $this->ensureIdentifier($name, 'Schema');
 
         return $this->escapeReservedWord($name);
     }
@@ -56,6 +58,7 @@ class NamingStrategy
     public function interfaceName(string $schemaName): string
     {
         $name = $this->config->classPrefix . $this->toPascalCase($schemaName) . $this->config->interfaceSuffix;
+        $name = $this->ensureIdentifier($name, 'Schema');
 
         return $this->escapeReservedWord($name);
     }
@@ -71,6 +74,16 @@ class NamingStrategy
         return $this->className($parentSchemaName . ucfirst($this->toCamelCase($propertyName)));
     }
 
+    /**
+     * Derive a raw component-schema key for a hoisted inline object.
+     *
+     * @see inlineClassName()
+     */
+    public function inlineSchemaName(string $parentSchemaName, string $propertyName): string
+    {
+        return $parentSchemaName . ucfirst($this->toCamelCase($propertyName));
+    }
+
     // -------------------------------------------------------------------------
     // Property names
     // -------------------------------------------------------------------------
@@ -83,6 +96,7 @@ class NamingStrategy
             PropertyNaming::SnakeCase => $this->toSnakeCase($wireName),
             PropertyNaming::Original => $wireName,
         };
+        $name = $this->ensureIdentifier($name, 'value');
 
         return $this->escapeReservedWord($name);
     }
@@ -150,6 +164,20 @@ class NamingStrategy
     {
         if (in_array(strtolower($name), self::RESERVED_WORDS, true)) {
             return $name . $this->config->reservedWordSuffix;
+        }
+
+        return $name;
+    }
+
+    private function ensureIdentifier(string $name, string $prefix): string
+    {
+        $name = preg_replace('/[^a-zA-Z0-9_]/', '_', $name) ?? '';
+        if ($name === '') {
+            return $prefix;
+        }
+
+        if (preg_match('/^[a-zA-Z_]/', $name) !== 1) {
+            return $prefix . ucfirst($name);
         }
 
         return $name;

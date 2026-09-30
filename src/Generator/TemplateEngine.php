@@ -39,6 +39,7 @@ class TemplateEngine
         $this->twig = new Environment($loader, [
             'autoescape'       => false,
             'strict_variables' => true,
+            'trim_blocks'      => true,
         ]);
 
         $defaultGlobals = [
@@ -91,6 +92,10 @@ class TemplateEngine
         // php_export: like var_export but returns the string
         $this->twig->addFilter(new TwigFilter('php_export', function (mixed $value): string {
             return var_export($value, true);
+        }));
+
+        $this->twig->addFilter(new TwigFilter('php_fqcn', static function (string $className): string {
+            return '\\' . ltrim($className, '\\');
         }));
     }
 

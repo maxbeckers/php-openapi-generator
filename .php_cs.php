@@ -4,6 +4,11 @@ $finder = PhpCsFixer\Finder::create()
     ->files()
     ->in(__DIR__ . '/src')
     ->in(__DIR__ . '/tests')
+    ->exclude([
+        'Framework/laravel/vendor',
+        'Framework/symfony/vendor',
+        'Snapshots',
+    ])
     ->name('*.php');
 
 $config = new PhpCsFixer\Config();

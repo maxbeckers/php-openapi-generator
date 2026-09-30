@@ -114,9 +114,6 @@ class GeneratorConfig
      */
     public bool $addPlugin = true;
 
-    /** Whether to emit warnings when a plugin does not handle an extension. */
-    public bool $verbosePluginWarnings = false;
-
     /**
      * When true, the built-in TrimPlugin and SensitivePlugin are NOT registered
      * automatically.  Use this when you want full control over which plugins
@@ -228,12 +225,6 @@ class GeneratorConfig
 
     /** Framework integration when generationTarget is Server. */
     public FrameworkTarget $frameworkTarget = FrameworkTarget::None;
-
-    /** Version of the framework (e.g. '8.0' for Symfony, '11.0' for Laravel). Used for version-specific code generation. */
-    public ?string $frameworkVersion = null;
-
-    /** HTTP client library version for client code generation (e.g. '7.0' for Guzzle). Not used for template logic currently. */
-    public ?string $httpClientVersion = null;
 
     /** Root namespace for generated API classes (server/client). */
     public string $apiNamespace = '';
@@ -409,13 +400,6 @@ class GeneratorConfig
         return $this;
     }
 
-    public function setVerbosePluginWarnings(bool $verbosePluginWarnings): static
-    {
-        $this->verbosePluginWarnings = $verbosePluginWarnings;
-
-        return $this;
-    }
-
     public function setDisableBuiltinPlugins(bool $disableBuiltinPlugins): static
     {
         $this->disableBuiltinPlugins = $disableBuiltinPlugins;
@@ -576,20 +560,6 @@ class GeneratorConfig
     public function setFrameworkTarget(FrameworkTarget $frameworkTarget): static
     {
         $this->frameworkTarget = $frameworkTarget;
-
-        return $this;
-    }
-
-    public function setFrameworkVersion(?string $frameworkVersion): static
-    {
-        $this->frameworkVersion = $frameworkVersion;
-
-        return $this;
-    }
-
-    public function setHttpClientVersion(?string $httpClientVersion): static
-    {
-        $this->httpClientVersion = $httpClientVersion;
 
         return $this;
     }

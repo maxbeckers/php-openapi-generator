@@ -1,0 +1,459 @@
+openapi: "3.0.0"
+info:
+  title: Client Runtime Test API
+  version: "1.0.0"
+paths:
+  /widgets/{widgetId}:
+    get:
+      operationId: getWidget
+      tags:
+        - widgets
+      parameters:
+        - name: widgetId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: includeArchived
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: tags
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: ids
+          in: query
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: integer
+        - name: labels
+          in: query
+          style: spaceDelimited
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: codes
+          in: query
+          style: pipeDelimited
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/WidgetStatus"
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: updatedAfter
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: X-Request-ID
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Trace
+          in: header
+          schema:
+            type: array
+            items:
+              type: string
+        - name: session
+          in: cookie
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Widget returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+        "404":
+          description: Widget not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: Server error
+    put:
+      operationId: upsertWidget
+      tags:
+        - widgets
+      parameters:
+        - name: widgetId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WidgetInput"
+      responses:
+        "200":
+          description: Widget updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+        "201":
+          description: Widget created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+        "204":
+          description: Widget unchanged
+    delete:
+      operationId: deleteWidget
+      tags:
+        - widgets
+      parameters:
+        - name: widgetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Widget deleted
+    patch:
+      operationId: touchWidget
+      tags:
+        - widgets
+      parameters:
+        - name: widgetId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WidgetInput"
+      responses:
+        "200":
+          description: Widget touched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+  /widgets:
+    get:
+      operationId: listWidgets
+      tags:
+        - widgets
+      parameters:
+        - name: tag
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        "200":
+          description: Widgets returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Widget"
+    post:
+      operationId: createWidget
+      tags:
+        - widgets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WidgetInput"
+      responses:
+        "201":
+          description: Widget created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+        "422":
+          description: Invalid widget
+  /jobs/{jobId}:
+    get:
+      operationId: getJob
+      tags:
+        - widgets
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job finished
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobResult"
+        "202":
+          description: Job still running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobPending"
+  /widget-names:
+    get:
+      operationId: listWidgetNames
+      tags:
+        - widgets
+      responses:
+        "200":
+          description: Widget names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /ping:
+    get:
+      operationId: ping
+      tags:
+        - widgets
+      security: []
+      responses:
+        default:
+          description: Ping response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pong"
+  /reports/{day}/{kind}:
+    get:
+      operationId: getReport
+      tags:
+        - widgets
+      parameters:
+        - name: day
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: kind
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/WidgetStatus"
+        - name: X-Since
+          in: header
+          schema:
+            type: string
+            format: date-time
+        - name: asOf
+          in: cookie
+          schema:
+            type: string
+            format: date
+      responses:
+        "204":
+          description: Report generated
+        "4XX":
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /secure/basic:
+    get:
+      operationId: getWithBasic
+      tags:
+        - secure
+      security:
+        - basicAuth: []
+      responses:
+        "204":
+          description: OK
+  /secure/header-key:
+    get:
+      operationId: getWithHeaderKey
+      tags:
+        - secure
+      security:
+        - headerKey: []
+      responses:
+        "204":
+          description: OK
+  /secure/query-key:
+    get:
+      operationId: getWithQueryKey
+      tags:
+        - secure
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+      security:
+        - queryKey: []
+      responses:
+        "204":
+          description: OK
+  /secure/cookie-key:
+    get:
+      operationId: getWithCookieKey
+      tags:
+        - secure
+      security:
+        - cookieKey: []
+      responses:
+        "204":
+          description: OK
+  /secure/alternatives:
+    get:
+      operationId: getWithAlternatives
+      tags:
+        - secure
+      security:
+        - oauth: []
+        - headerKey: []
+          basicAuth: []
+      responses:
+        "204":
+          description: OK
+  /secure/optional:
+    get:
+      operationId: getWithOptionalAuth
+      tags:
+        - secure
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        "204":
+          description: OK
+  /secure/public:
+    get:
+      operationId: getPublic
+      tags:
+        - secure
+      security: []
+      responses:
+        "204":
+          description: OK
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    basicAuth:
+      type: http
+      scheme: basic
+    headerKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    queryKey:
+      type: apiKey
+      in: query
+      name: api_key
+    cookieKey:
+      type: apiKey
+      in: cookie
+      name: auth_token
+    oauth:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.example.test/token
+          scopes: {}
+  schemas:
+    WidgetStatus:
+      type: string
+      enum:
+        - active
+        - archived
+    Widget:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 2
+    WidgetInput:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 2
+        color:
+          type: string
+    JobResult:
+      type: object
+      required:
+        - result
+      properties:
+        result:
+          type: string
+    JobPending:
+      type: object
+      required:
+        - progress
+      properties:
+        progress:
+          type: integer
+    Pong:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+    Problem:
+      type: object
+      properties:
+        title:
+          type: string

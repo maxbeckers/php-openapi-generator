@@ -71,6 +71,27 @@ class SchemaResolver
             $this->visit($name);
         }
 
+        $generatedNames = [];
+        foreach ($this->kinds as $schemaName => $kind) {
+            if ($kind === SchemaKind::Alias) {
+                continue;
+            }
+            $phpName = match ($kind) {
+                SchemaKind::Enum => $this->naming->enumName($schemaName),
+                SchemaKind::Interface => $this->naming->interfaceName($schemaName),
+                default => $this->naming->className($schemaName),
+            };
+            if (isset($generatedNames[$phpName])) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Schema names "%s" and "%s" both normalize to PHP name "%s".',
+                    $generatedNames[$phpName],
+                    $schemaName,
+                    $phpName,
+                ));
+            }
+            $generatedNames[$phpName] = $schemaName;
+        }
+
         return $this->kinds;
     }
 
@@ -266,7 +287,7 @@ class SchemaResolver
 
             if ($propSchema->type === 'object' || !empty($propSchema->properties)) {
                 // Hoist to a named schema
-                $hoistedName = $this->naming->inlineClassName($schemaName, $propName);
+                $hoistedName = $this->naming->inlineSchemaName($schemaName, $propName);
 
                 if (!isset($this->schemas[$hoistedName])) {
                     $this->schemas[$hoistedName] = $propSchema;
@@ -284,7 +305,7 @@ class SchemaResolver
                 && ($propSchema->items->type === 'object' || !empty($propSchema->items->properties))
             ) {
                 // Inline object inside array items → hoist
-                $hoistedName = $this->naming->inlineClassName($schemaName, $propName);
+                $hoistedName = $this->naming->inlineSchemaName($schemaName, $propName);
 
                 if (!isset($this->schemas[$hoistedName])) {
                     $this->schemas[$hoistedName] = $propSchema->items;

@@ -7,7 +7,6 @@ Use this adapter when you need framework-neutral client interoperability.
 ```php
 $config->generationTarget = GenerationTarget::Client;
 $config->httpClient = HttpClientAdapter::Psr18;
-$config->httpClientVersion = '1.1';
 ```
 
 ## Constructor Signature
@@ -25,7 +24,7 @@ public function __construct(
 ## Request Style
 
 ```php
-$url = $this->baseUrl . "/pets/{$petId}";
+$url = rtrim($this->baseUrl, '/') . '/pets/' . rawurlencode((string) $petId);
 $request = $this->requestFactory->createRequest('GET', $url);
 $response = $this->httpClient->sendRequest($request);
 ```
@@ -33,13 +32,15 @@ $response = $this->httpClient->sendRequest($request);
 For JSON bodies, the generator sets content type and stream body:
 
 ```php
-$bodyStream = $this->streamFactory->createStream(json_encode($body->toArray(), JSON_THROW_ON_ERROR));
+$bodyStream = $this->streamFactory->createStream(json_encode($body->toRequestArray(), JSON_THROW_ON_ERROR));
 $request = $request->withHeader('Content-Type', 'application/json')->withBody($bodyStream);
 ```
 
 ## Response Mapping
 
-Response body is decoded with `json_decode(..., JSON_THROW_ON_ERROR)` and then mapped to generated models.
+The response body is decoded by the generated `decodeJsonResponse()` helper,
+which rejects non-JSON content types and invalid JSON with an
+`UnexpectedValueException`, and then mapped to generated models.
 
 ## Notes
 

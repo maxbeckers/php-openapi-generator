@@ -1,0 +1,49 @@
+openapi: "3.0.0"
+info:
+  title: Runtime Model Tests
+  version: "1.0.0"
+
+paths: {}
+
+components:
+  schemas:
+    Address:
+      type: object
+      required: [street]
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+
+    RuntimePayload:
+      type: object
+      required: [name, createdAt, addresses]
+      properties:
+        name:
+          type: string
+        identifier:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        labels:
+          type: array
+          items:
+            type: string
+        addresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string

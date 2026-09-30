@@ -1,0 +1,21 @@
+{% if op.requestBodyType is not null %}
+{% set bodyClass = op.requestBodyType|split('\\')|last %}
+{% set requestValidator = null %}
+{% if config.validateServerRequest and config.validationStrategy.name == 'NativeMethod' %}
+{% set requestValidator = 'validateNativeRequestPayload' %}
+{% elseif config.validateServerRequest and config.validationStrategy.name == 'SymfonyConstraints' %}
+{% set requestValidator = 'validateSymfonyRequestPayload' %}
+{% endif %}
+        $body = $this->parseJsonRequestBody($request, static fn(array $data): {{ bodyClass }} => {{ bodyClass }}::fromRequestArray($data){% if not op.requestBodyRequired %}, false{% endif %});
+{% if requestValidator is not null %}
+
+        try {
+            $this->{{ requestValidator }}($body);
+        } catch (\InvalidArgumentException $exception) {
+            throw new \Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException($exception->getMessage(), $exception);
+        }
+
+{% elseif framework == 'laravel' and config.validateServerRequest and config.validationStrategy.name == 'LaravelValidation' %}
+        $this->validateLaravelRequestPayload($body);
+{% endif %}
+{% endif %}

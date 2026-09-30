@@ -50,12 +50,8 @@ $config->apiOutputDir = 'Api';
 $config->generationTarget = GenerationTarget::Server;
 $config->frameworkTarget = FrameworkTarget::None;
 
-// Optional when framework-specific majors need different generated glue:
-// $config->frameworkVersion = '8.0';
-
-// Optional when generating clients and adapter majors need different code:
+// Optional when generating clients:
 // $config->httpClient = HttpClientAdapter::Guzzle;
-// $config->httpClientVersion = '7.8';
 
 return $config;
 ```
@@ -70,7 +66,6 @@ vendor/bin/openapi-gen
 
 - `GenerationTarget::Server`: generates API contracts from `paths`.
 - `GenerationTarget::Client`: generates typed API client classes.
-- Optional version knobs: `$config->frameworkVersion` for server framework majors and `$config->httpClientVersion` for client adapter majors.
 
 Useful CLI overrides:
 

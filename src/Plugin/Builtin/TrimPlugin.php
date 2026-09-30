@@ -30,10 +30,8 @@ class TrimPlugin implements PropertyExtensionPluginInterface
 
         $limit = (int) $trim;
         $wireName = $context->property->wireName;
-        $phpName = $context->property->phpName;
-
         $extraCode = sprintf(
-            'if (isset($data[\'%s\']) && is_string($data[\'%s\'])) { $data[\'%s\'] = substr($data[\'%s\'], 0, %d); }',
+            "if (isset(\$data['%s']) && is_string(\$data['%s'])) {\n            \$data['%s'] = substr(\$data['%s'], 0, %d);\n        }",
             $wireName,
             $wireName,
             $wireName,

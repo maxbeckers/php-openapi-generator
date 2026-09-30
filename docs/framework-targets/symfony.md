@@ -7,7 +7,6 @@
 - Full HTTP request/response handling 
 - Symfony's dependency injection integration
 
-If you need different generated glue for Symfony majors, set `$config->frameworkVersion` explicitly, for example `$config->frameworkVersion = '8.0';`.
 
 ## What Gets Generated
 
@@ -42,7 +41,7 @@ abstract class PetsApiController implements PetsApiInterface
     public function listPetsAction(Request $request): JsonResponse
     {
         $result = $this->listPets(
-            limit: $request->query->get('limit') ?? null,
+            limit: $this->parseParameter($this->queryParameterValues($request, 'limit'), 'limit', 'int', false),
         );
         return new JsonResponse($result, 200);
     }
@@ -50,10 +49,11 @@ abstract class PetsApiController implements PetsApiInterface
     #[Route('/pets', methods: ['POST'])]
     public function createPetAction(Request $request): JsonResponse
     {
+        $body = $this->parseJsonRequestBody($request, static fn(array $data): NewPet => NewPet::fromRequestArray($data));
         $result = $this->createPet(
-            body: NewPet::fromArray($request->toArray()),
+            body: $body,
         );
-        return new JsonResponse($result->toArray(), 201);
+        return new JsonResponse($result->toResponseArray(), 201);
     }
 
     // ... other operations
@@ -64,6 +64,24 @@ abstract class PetsApiController implements PetsApiInterface
     // ...
 }
 ```
+
+Generated actions convert path, query, header and cookie values to the declared
+PHP types (`int`, `float`, `bool`, enums, `DateTimeImmutable` for `date` /
+`date-time`, and arrays following the OpenAPI `style`/`explode` rules) through
+the protected `parseParameter()` / `queryParameterValues()` helpers. Missing
+required or invalid values throw a `BadRequestHttpException` (HTTP 400).
+JSON request bodies are read by the protected `parseJsonRequestBody()` helper:
+a missing required body, invalid JSON, a non-object body or a body that cannot
+be hydrated into the DTO also throws a `BadRequestHttpException` (HTTP 400);
+optional bodies are passed as `null` when the request has no content. With
+`validateServerRequest` enabled, a DTO that fails validation throws an
+`UnprocessableEntityHttpException` (HTTP 422) wrapping the original
+`InvalidArgumentException`. Response validation failures stay an
+`InvalidArgumentException` (HTTP 500) because they indicate a server bug.
+Operations whose domain method is not overridden throw a
+`BadMethodCallException`.
+Union return types respond with the status code of the returned model, and
+scalar results are returned as JSON unchanged.
 
 ## Implementation Pattern
 
@@ -208,7 +226,7 @@ Override the `*Action` method for custom headers:
 public function listPetsAction(Request $request): JsonResponse
 {
     $result = $this->listPets(
-        limit: $request->query->get('limit') ?? null,
+        limit: $this->parseParameter($this->queryParameterValues($request, 'limit'), 'limit', 'int', false),
     );
     $response = new JsonResponse($result, 200);
     $response->headers->set('X-Total-Count', count($result));

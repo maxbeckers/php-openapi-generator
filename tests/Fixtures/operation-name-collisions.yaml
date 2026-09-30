@@ -1,0 +1,19 @@
+openapi: "3.0.0"
+info:
+  title: Operation Name Collision
+  version: "1.0.0"
+paths:
+  /first:
+    get:
+      operationId: get-record
+      tags: [records]
+      responses:
+        "204":
+          description: No content
+  /second:
+    get:
+      operationId: get_record
+      tags: [records]
+      responses:
+        "204":
+          description: No content

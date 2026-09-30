@@ -39,6 +39,7 @@ class PropertyContext
         public readonly ?string $description,
         public readonly array $extensions,
         public readonly ?Schema $schema,
+        public readonly bool $isEnum = false,
         /** @var string[] Extra PHP attributes injected by plugins (e.g. '#[\SensitiveParameter]') */
         public array $extraAttributes = [],
         /** Extra PHP code injected by plugins into the fromArray() body before this property's line */

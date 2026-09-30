@@ -47,6 +47,47 @@ readonly class ClientGenerator
             $files[$clientFile] = $clientContent;
         }
 
+        $firstGroup = $groups[0] ?? null;
+        if ($firstGroup === null) {
+            return $files;
+        }
+
+        if ($firstGroup->allSecuritySchemes !== []) {
+            $files[$this->outputPath('ApiCredentials.php')] = $this->templateEngine->render('client/credentials.php.twig', [
+                'config'    => $this->config,
+                'namespace' => $firstGroup->namespace,
+                'schemes'   => $firstGroup->allSecuritySchemes,
+            ]);
+        }
+
+        if ($this->config->typedErrorResponses) {
+            $exceptionNamespace = $firstGroup->namespace . '\\Exception';
+            $files[$this->outputPath('Exception' . DIRECTORY_SEPARATOR . 'ApiException.php')] = $this->templateEngine->render(
+                'client/exception/api-exception.php.twig',
+                ['config' => $this->config, 'namespace' => $exceptionNamespace],
+            );
+
+            $exceptionClasses = [];
+            foreach ($groups as $group) {
+                foreach ($group->operations as $operation) {
+                    $exceptionClasses += $operation->errorExceptionClasses();
+                }
+            }
+            ksort($exceptionClasses);
+
+            foreach ($exceptionClasses as $statusCode => $className) {
+                $files[$this->outputPath('Exception' . DIRECTORY_SEPARATOR . $className . '.php')] = $this->templateEngine->render(
+                    'client/exception/status-exception.php.twig',
+                    [
+                        'config'     => $this->config,
+                        'namespace'  => $exceptionNamespace,
+                        'className'  => $className,
+                        'statusCode' => $statusCode,
+                    ],
+                );
+            }
+        }
+
         return $files;
     }
 

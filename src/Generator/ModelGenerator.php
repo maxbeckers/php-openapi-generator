@@ -178,7 +178,7 @@ class ModelGenerator implements GeneratorInterface
 
         $properties = [];
         if ($kind === SchemaKind::Object) {
-            $properties = $this->resolveProperties($schema, $circularProps, $imports, $components);
+            $properties = $this->resolveProperties($schemaName, $schema, $circularProps, $imports, $components);
         }
 
         $parentClass = null;
@@ -250,6 +250,7 @@ class ModelGenerator implements GeneratorInterface
      * @return PropertyContext[]
      */
     private function resolveProperties(
+        string $schemaName,
         Schema $schema,
         array $circularProps,
         ImportManager $imports,
@@ -318,8 +319,19 @@ class ModelGenerator implements GeneratorInterface
         }
 
         $contexts = [];
+        $phpNames = [];
         foreach ($allProperties as $wireName => $propSchema) {
             $phpName = $this->naming->propertyName($wireName);
+            if (isset($phpNames[$phpName])) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Properties "%s" and "%s" both normalize to PHP name "$%s" in schema "%s".',
+                    $phpNames[$phpName],
+                    $wireName,
+                    $phpName,
+                    $schemaName,
+                ));
+            }
+            $phpNames[$phpName] = $wireName;
             $required = in_array($wireName, $allRequired, true);
             $isCircular = in_array($wireName, $circularProps, true);
 
@@ -347,6 +359,8 @@ class ModelGenerator implements GeneratorInterface
                 description: $propSchema->description,
                 extensions: $propSchema->extensions,
                 schema: $propSchema,
+                isEnum: $propSchema->ref !== null
+                    && $this->resolver->getKind($this->extractRefName($propSchema->ref)) === SchemaKind::Enum,
             );
 
             foreach ($this->propertyPlugins as $plugin) {
@@ -443,6 +457,7 @@ class ModelGenerator implements GeneratorInterface
         $visited[$schemaName] = true;
 
         $ownProperties = $this->resolveProperties(
+            schemaName: $schemaName,
             schema: $schema,
             circularProps: $this->resolver->getCircularProperties($schemaName),
             imports: $imports,
@@ -502,6 +517,11 @@ class ModelGenerator implements GeneratorInterface
             $seen[$property->phpName] = true;
             $merged[] = $property;
         }
+
+        usort(
+            $merged,
+            static fn (PropertyContext $a, PropertyContext $b): int => (int) $b->required <=> (int) $a->required,
+        );
 
         return $merged;
     }
@@ -669,8 +689,8 @@ class ModelGenerator implements GeneratorInterface
     private function resolveStringType(Schema $schema): string
     {
         return match ($schema->format) {
-            'date-time', 'date-time-only' => $this->config->dateTimeClass,
-            'date'                         => $this->config->dateClass,
+            'date-time', 'date-time-only' => '\\' . ltrim($this->config->dateTimeClass, '\\'),
+            'date'                         => '\\' . ltrim($this->config->dateClass, '\\'),
             default                        => 'string',
         };
     }

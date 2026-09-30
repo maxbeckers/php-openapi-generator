@@ -79,10 +79,7 @@ $config->apiOutputDir = 'Api';
 $config->generationTarget = GenerationTarget::Server;
 $config->frameworkTarget = FrameworkTarget::None;
 
-// Optional version-aware generation knobs:
-// $config->frameworkVersion = '8.0';
 // $config->httpClient = HttpClientAdapter::Guzzle;
-// $config->httpClientVersion = '7.8';
 
 $config->phpReadonly = true;
 $config->generateFromArray = true;
@@ -143,7 +140,6 @@ Models are always generated.
 - `FrameworkTarget::Symfony`: `*ApiInterface` + generated `*ApiController` actions with `#[Route]`
 - `FrameworkTarget::Laravel`: `*ApiInterface` + generated `*ApiController` + `*ApiRoutes` helper
 
-Optional: set `$config->frameworkVersion` when server framework major versions require different generated glue.
 
 ### Client target (`GenerationTarget::Client`)
 
@@ -156,7 +152,6 @@ Adapters:
 - `HttpClientAdapter::Guzzle`
 - `HttpClientAdapter::Psr18`
 
-Optional: set `$config->httpClientVersion` when adapter major versions require different generated transport code.
 
 ## Recommended Workflow
 

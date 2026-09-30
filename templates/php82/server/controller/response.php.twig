@@ -1,0 +1,41 @@
+{% if op.returnType == 'void' %}
+
+        return new {{ jsonResponse }}(null, {{ op.successCodes[0] ?? 204 }});
+{% else %}
+{% if op.returnsNullable %}
+        if ($result === null) {
+            return new {{ jsonResponse }}(null, {{ op.emptySuccessCodes()[0] ?? 204 }});
+        }
+{% endif %}
+{% if config.validationStrategy.name == 'NativeMethod' and config.validateServerResponse %}
+        $this->validateNativeResponsePayload($result);
+{% elseif config.validationStrategy.name == 'SymfonyConstraints' and config.validateServerResponse %}
+        $this->validateSymfonyResponsePayload($result);
+{% elseif config.validationStrategy.name == 'LaravelValidation' and config.validateServerResponse and config.frameworkTarget.value == 'laravel' %}
+        $this->validateLaravelResponsePayload($result);
+{% endif %}
+{% if op.returnsArray and '\\' not in op.returnType %}
+
+        return new {{ jsonResponse }}($result, {{ op.primarySuccessCode() }});
+{% elseif op.returnsArray %}
+
+        return new {{ jsonResponse }}(array_map(static fn($item) => is_object($item) && method_exists($item, 'toResponseArray') ? $item->toResponseArray() : (is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : $item), $result), {{ op.primarySuccessCode() }});
+{% elseif op.returnType == 'mixed' %}
+
+        return new {{ jsonResponse }}(is_object($result) && method_exists($result, 'toResponseArray') ? $result->toResponseArray() : $result, {{ op.primarySuccessCode() }});
+{% elseif not op.returnsModel() %}
+
+        return new {{ jsonResponse }}($result, {{ op.primarySuccessCode() }});
+{% elseif op.returnTypes|length > 1 %}
+        $statusCode = match (true) {
+{% for type, code in op.successCodesByType() %}
+            $result instanceof {{ type }} => {{ code }},
+{% endfor %}
+        };
+
+        return new {{ jsonResponse }}($result->toResponseArray(), $statusCode);
+{% else %}
+
+        return new {{ jsonResponse }}($result->toResponseArray(), {{ op.primarySuccessCode() }});
+{% endif %}
+{% endif %}

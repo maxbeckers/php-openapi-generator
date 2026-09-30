@@ -5,17 +5,19 @@
 declare(strict_types=1);
 
 namespace {{ group.namespace }};
+{% if group.interfaceImports.getUseStatements() is not empty %}
 
-{% for use in useStatements %}
+{% for use in group.interfaceImports.getUseStatements() %}
 {{ use }}
 {% endfor %}
+{% endif %}
 
 {{ generation.renderFileHeader(generationMeta, '') }}
+
 interface {{ group.className }}ClientInterface
 {
 {% for op in group.operations %}
-{{ operation.renderDocblock(op, '    ') }}{% set signature = operation.renderSignature(op, false)|trim("\n\r") %}
+{{ operation.renderDocblock(op, '    ') }}{% set signature = operation.renderSignature(op)|trim("\n\r") %}
     {{ signature }};
-
 {% endfor %}
 }

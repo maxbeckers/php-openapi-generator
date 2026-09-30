@@ -1,0 +1,53 @@
+openapi: "3.0.0"
+info:
+  title: Unsupported Request Content
+  version: "1.0.0"
+paths:
+  /upload:
+    post:
+      operationId: upload
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "204":
+          description: Uploaded
+  /upload/form:
+    post:
+      operationId: uploadForm
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+      responses:
+        "204":
+          description: Uploaded
+  /upload/multipart:
+    post:
+      operationId: uploadMultipart
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+      responses:
+        "204":
+          description: Uploaded
+  /upload/octet-stream:
+    post:
+      operationId: uploadBinary
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+      responses:
+        "204":
+          description: Uploaded

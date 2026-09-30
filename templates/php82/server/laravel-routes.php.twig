@@ -10,9 +10,7 @@ use Illuminate\Support\Facades\Route;
 {{ generation.renderFileHeader(generationMeta, '') }}
 final class {{ group.className }}Routes
 {
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     public static function register(string $controller = {{ group.className }}Controller::class): void
     {

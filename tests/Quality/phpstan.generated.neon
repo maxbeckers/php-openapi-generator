@@ -1,0 +1,9 @@
+parameters:
+    level: 8
+    paths:
+        - ../../var/generated-quality
+    bootstrapFiles:
+        - ../../vendor/autoload.php
+    tmpDir: ../../var/phpstan/generated-quality
+    parallel:
+        maximumNumberOfProcesses: 2

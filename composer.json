@@ -4,6 +4,11 @@
   "type": "composer-plugin",
   "license": "MIT",
   "minimum-stability": "stable",
+  "config": {
+    "platform": {
+      "php": "8.2.0"
+    }
+  },
   "authors": [
     {
       "name": "Max Beckers",
@@ -21,7 +26,18 @@
     "phpunit/phpunit": "^10.0",
     "friendsofphp/php-cs-fixer": "^3.89",
     "phpstan/phpstan": "^1.12",
-    "composer/composer": "^2.8"
+    "composer/composer": "^2.8",
+    "symfony/http-foundation": "^7.4",
+    "symfony/routing": "^7.4",
+    "symfony/validator": "^7.4",
+    "symfony/http-client-contracts": "^3.6",
+    "guzzlehttp/guzzle": "^7.9",
+    "psr/http-client": "^1.0",
+    "psr/http-factory": "^1.1",
+    "illuminate/http": "^11.0|^12.0",
+    "illuminate/routing": "^11.0|^12.0",
+    "illuminate/validation": "^11.0|^12.0",
+    "symfony/http-client": "^7.4"
   },
   "suggest": {
     "symfony/validator": "Required when validationStrategy is SymfonyConstraints"
@@ -41,8 +57,9 @@
     "class": "MaxBeckers\\OpenApiGenerator\\Plugin\\ComposerPlugin"
   },
   "scripts": {
-    "test": "phpunit",
-    "test-fast": "php -d xdebug.mode=off vendor/bin/phpunit",
+    "test": "@php -d xdebug.mode=off vendor/bin/phpunit",
+    "test-fast": "@test",
+    "check-generated": "@php tests/Quality/check-generated.php",
     "cs": "php-cs-fixer fix --config=.php_cs.php -v --allow-risky=yes"
   }
 }

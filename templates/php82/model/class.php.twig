@@ -1,20 +1,26 @@
-{%- set hasReadonly = config.phpReadonly -%}
+{%- set hasReadonly = config.phpReadonly and config.generateConstructor -%}
+{%- set isAdditionalPropertiesMap = schema.schema.type == 'object' and schema.schema.additionalProperties is not null and schema.schema.additionalProperties is not same as(false) and schema.schema.properties is empty and schema.properties is empty -%}
+{%- set hasLaravelRuleEnrichment = config.validationStrategy.name == 'LaravelValidation' and schema.properties|filter(prop => prop.schema.ref is not null or (prop.schema.type == 'array' and prop.schema.items is not null and prop.schema.items.ref is not null) or (prop.schema.type == 'array' and prop.schema.uniqueItems))|length > 0 -%}
 {%- import 'model/macros/validation.php.twig' as validation -%}
 {%- import 'shared/generation-meta-macros.php.twig' as generation -%}
+{%- set hasSymfonyConstraints = config.validationStrategy.name == 'SymfonyConstraints' and schema.properties|filter(prop => validation.renderValidationAttributes(config, prop, '')|trim != '')|length > 0 -%}
 <?php
 
 declare(strict_types=1);
 
 namespace {{ schema.namespace }};
+{% if useStatements is not empty or hasSymfonyConstraints %}
 
 {% for use in useStatements %}
 {{ use }}
 {% endfor %}
-{% if config.validationStrategy.name == 'SymfonyConstraints' %}
+{% endif %}
+{% if hasSymfonyConstraints %}
 use Symfony\Component\Validator\Constraints as Assert;
 {% endif %}
 
 {{ generation.renderFileHeader(generationMeta, '') }}
+
 {% if schema.schema.description is not null or schema.schema.deprecated %}
 /**
 {% if schema.schema.description is not null %} * {{ schema.schema.description|raw }}
@@ -26,12 +32,33 @@ use Symfony\Component\Validator\Constraints as Assert;
 
 {
 {% if config.generateConstructor %}
+{% if isAdditionalPropertiesMap %}
+    /**
+     * @param array<array-key, mixed> $additionalProperties
+     */
+    public function __construct(public array $additionalProperties = []) {}
+{% else %}
+{% set arrayProperties = schema.constructorProperties|filter(prop => prop.phpType ends with '[]' or prop.phpType == 'array') %}
+{% if config.generatePhpDoc and arrayProperties is not empty %}
+    /**
+{% for prop in arrayProperties %}
+{% if prop.phpType ends with '[]' %}
+{% set elementType = prop.phpType|slice(0, prop.phpType|length - 2) %}
+{% if elementType starts with '?' %}
+     * @param list<{{ elementType|slice(1) }}>|null ${{ prop.phpName }}
+{% else %}
+     * @param list<{{ elementType }}> ${{ prop.phpName }}
+{% endif %}
+{% else %}
+     * @param array<array-key, mixed> ${{ prop.phpName }}
+{% endif %}
+{% endfor %}
+     */
+{% endif %}
     public function __construct(
 {% for prop in schema.constructorProperties %}
-{% if not (config.splitReadWriteDtos and prop.writeOnly) %}
 {% set validationAttributes = validation.renderValidationAttributes(config, prop, '        ')|trim("\n\r") %}
 {% if validationAttributes != '' %}
-
 {{ validationAttributes }}
 {% endif %}
 {% for attr in prop.extraAttributes %}
@@ -49,24 +76,28 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% if prop.phpType starts with '?' and prop.phpType|slice(1) ends with '[]' %}{% set declType = '?array' %}{% elseif prop.phpType ends with '[]' %}{% set declType = 'array' %}{% elseif prop.isCircular and not (prop.phpType starts with '?') %}{% set declType = '?' ~ prop.phpType %}{% else %}{% set declType = prop.phpType %}{% endif %}
 {% set inheritedParam = schema.parentClass is not null and schema.parentConstructorProperties|filter(p => p.phpName == prop.phpName)|length > 0 %}
         {% if not inheritedParam %}public {% endif %}{{ declType }} ${{ prop.phpName }}{% if prop.isCircular and declType starts with '?' %} = null{% elseif prop.isCircular and declType == 'array' %} = []{% elseif not prop.required and prop.nullable and not prop.hasDefault %} = null{% elseif prop.hasDefault %} = {{ prop.default|php_export }}{% elseif not prop.required %} = null{% endif %},
-{% endif %}
 {% endfor %}
-    ) {
 {% if schema.parentClass is not null %}
+    ) {
         parent::__construct(
 {% for prop in schema.parentConstructorProperties %}
             {{ prop.phpName }}: ${{ prop.phpName }},
 {% endfor %}
         );
-{% endif %}
     }
 {% else %}
+    ) {}
+{% endif %}
+{% endif %}
+{% else %}
+{% if isAdditionalPropertiesMap %}
+    /** @var array<array-key, mixed> */
+    public array $additionalProperties = [];
+{% endif %}
 {% for prop in schema.properties %}
-{% if not (config.splitReadWriteDtos and prop.writeOnly) %}
 {% if prop.phpType starts with '?' and prop.phpType|slice(1) ends with '[]' %}{% set declType = '?array' %}{% elseif prop.phpType ends with '[]' %}{% set declType = 'array' %}{% elseif prop.isCircular and not (prop.phpType starts with '?') %}{% set declType = '?' ~ prop.phpType %}{% else %}{% set declType = prop.phpType %}{% endif %}
 {% set validationAttributes = validation.renderValidationAttributes(config, prop, '    ')|trim("\n\r") %}
 {% if validationAttributes != '' %}
-
 {{ validationAttributes }}
 {% endif %}
 {% for attr in prop.extraAttributes %}
@@ -81,24 +112,48 @@ use Symfony\Component\Validator\Constraints as Assert;
      * {{ prop.description|raw }}
      */
 {% endif %}
-    public {{ declType }} ${{ prop.phpName }}{% if prop.isCircular and declType starts with '?' %} = null{% elseif prop.isCircular and declType == 'array' %} = []{% elseif not prop.required and prop.nullable and not prop.hasDefault %} = null{% elseif prop.hasDefault %} = {{ prop.default|php_export }}{% elseif not prop.required %} = null{% endif %};
+{% if config.generatePhpDoc and (prop.phpType ends with '[]' or prop.phpType == 'array') %}
+{% if prop.phpType ends with '[]' %}
+{% set elementType = prop.phpType|slice(0, prop.phpType|length - 2) %}
+{% if elementType starts with '?' %}
+    /** @var list<{{ elementType|slice(1) }}>|null */
+{% else %}
+    /** @var list<{{ elementType }}> */
 {% endif %}
+{% else %}
+    /** @var array<array-key, mixed> */
+{% endif %}
+{% endif %}
+    public {{ declType }} ${{ prop.phpName }}{% if prop.isCircular and declType starts with '?' %} = null{% elseif prop.isCircular and declType == 'array' %} = []{% elseif not prop.required and prop.nullable and not prop.hasDefault %} = null{% elseif prop.hasDefault %} = {{ prop.default|php_export }}{% elseif not prop.required %} = null{% endif %};
 {% endfor %}
 {% endif %}
 
 {% if config.generateFromArray %}
+    /**
+     * @param array<array-key, mixed> $data
+     */
     public static function fromArray(array $data): {{ schema.className }}
     {
+{% if (schema.schema.oneOf is not empty or schema.schema.anyOf is not empty) and schema.schema.discriminator is null %}
+        throw new \LogicException('Cannot hydrate {{ schema.schemaName }} without a discriminator.');
+{% else %}
+{% if isAdditionalPropertiesMap %}
+{% if config.generateConstructor %}
+        return new {{ schema.className }}($data);
+{% else %}
+        $instance = new {{ schema.className }}();
+        $instance->additionalProperties = $data;
+
+        return $instance;
+{% endif %}
+{% else %}
 {% for prop in schema.properties %}
-{% if not (config.splitReadWriteDtos and prop.writeOnly) %}
 {% if prop.extraCode is not null %}
         {{ prop.extraCode }}
-{% endif %}
 {% endif %}
 {% endfor %}
         $instance = new {{ schema.className }}(
 {% for prop in schema.constructorProperties %}
-{% if not (config.splitReadWriteDtos and prop.writeOnly) %}
 {# Determine whether this is an array-of-objects, nullable-array-of-objects, or circular object ref. #}
 {% set isNullableArray = prop.phpType starts with '?' and prop.phpType|slice(1) ends with '[]' and prop.phpType|slice(1) != '[]' %}
 {% set isArray = not isNullableArray and prop.phpType ends with '[]' and prop.phpType != 'array' %}
@@ -106,6 +161,9 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% set bareType = prop.phpType starts with '?' ? prop.phpType|slice(1) : prop.phpType %}
 {% set scalars = ['string', 'int', 'float', 'bool', 'mixed', 'array'] %}
 {% set isObjectProp = bareType not in scalars and not isArray and not isNullableArray and not isCircularObject %}
+{% set isDateTime = prop.schema is not null and prop.schema.format in ['date-time', 'date-time-only'] %}
+{% set isDate = prop.schema is not null and prop.schema.format == 'date' %}
+{% set dateClass = isDateTime ? config.dateTimeClass|php_fqcn : config.dateClass|php_fqcn %}
 {% if isArray %}
 {% set elementType = prop.phpType|slice(0, prop.phpType|length - 2) %}
 {% set elementScalarTypes = ['string', 'int', 'float', 'bool', 'mixed', 'array'] %}
@@ -157,15 +215,32 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% elseif isCircularObject %}
 {% set circularType = prop.phpType starts with '?' ? prop.phpType|slice(1) : prop.phpType %}
             {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? {{ circularType }}::fromArray($data['{{ prop.wireName }}']) : null,
+{% elseif isDateTime or isDate %}
+{% if prop.required and not prop.nullable %}
+            {{ prop.phpName }}: !isset($data['{{ prop.wireName }}'])
+                ? throw new \InvalidArgumentException('Missing required property {{ prop.wireName }}.')
+                : (is_string($data['{{ prop.wireName }}']) ? new {{ dateClass }}($data['{{ prop.wireName }}']) : throw new \InvalidArgumentException('Expected a string for {{ prop.wireName }}.')),
+{% else %}
+            {{ prop.phpName }}: !isset($data['{{ prop.wireName }}'])
+                ? null
+                : (is_string($data['{{ prop.wireName }}']) ? new {{ dateClass }}($data['{{ prop.wireName }}']) : throw new \InvalidArgumentException('Expected a string for {{ prop.wireName }}.')),
+{% endif %}
 {% elseif isObjectProp and not (prop.phpType starts with '?') %}
+{% if prop.isEnum and config.enumUnknownDefault.value == 'null' %}
+            {{ prop.phpName }}: isset($data['{{ prop.wireName }}'])
+                ? ({{ prop.phpType }}::fromArray($data['{{ prop.wireName }}']) ?? throw new \InvalidArgumentException('Unknown value for {{ prop.wireName }}.'))
+                : throw new \InvalidArgumentException('Missing required property {{ prop.wireName }}.'),
+{% else %}
             {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? {{ prop.phpType }}::fromArray($data['{{ prop.wireName }}']) : {{ prop.phpType }}::fromArray([]),
+{% endif %}
 {% elseif isObjectProp %}
             {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? {{ bareType }}::fromArray($data['{{ prop.wireName }}']) : null,
+{% elseif prop.phpType == '?array' %}
+            {{ prop.phpName }}: $data['{{ prop.wireName }}'] ?? null,
 {% elseif prop.nullable and prop.phpType != 'string' and prop.phpType != 'int' and prop.phpType != 'float' and prop.phpType != 'bool' and prop.phpType != 'mixed' and prop.phpType != 'array' and not (prop.phpType starts with '?') %}
             {{ prop.phpName }}: isset($data['{{ prop.wireName }}']) ? {{ prop.phpType }}::fromArray($data['{{ prop.wireName }}']) : null,
 {% else %}
             {{ prop.phpName }}: $data['{{ prop.wireName }}'] ?? {% if prop.hasDefault %}{{ prop.default|php_export }}{% elseif prop.nullable %}null{% elseif prop.phpType == 'int' %}0{% elseif prop.phpType == 'float' %}0.0{% elseif prop.phpType == 'bool' %}false{% elseif prop.phpType == 'string' %}''{% else %}null{% endif %},
-{% endif %}
 {% endif %}
 {% endfor %}
         );
@@ -184,45 +259,60 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% else %}
         return $instance;
 {% endif %}
+{% endif %}
+{% endif %}
     }
 
+    /**
+     * @param array<array-key, mixed> $data
+     */
     public static function fromRequestArray(array $data): {{ schema.className }}
     {
+{% set readOnlyProperties = schema.properties|filter(prop => prop.readOnly) %}
 {% for prop in schema.properties %}
 {% if prop.readOnly %}
         unset($data['{{ prop.wireName }}']);
 {% endif %}
-{% endfor %}
-        return {{ schema.className }}::fromArray($data);
+{% endfor %}{% if readOnlyProperties is not empty %}{{ "\n" }}{% endif %}        return {{ schema.className }}::fromArray($data);
     }
 
+    /**
+     * @param array<array-key, mixed> $data
+     */
     public static function fromResponseArray(array $data): {{ schema.className }}
     {
+{% set writeOnlyProperties = schema.properties|filter(prop => prop.writeOnly) %}
 {% for prop in schema.properties %}
 {% if prop.writeOnly %}
         unset($data['{{ prop.wireName }}']);
 {% endif %}
-{% endfor %}
-        return {{ schema.className }}::fromArray($data);
+{% endfor %}{% if writeOnlyProperties is not empty %}{{ "\n" }}{% endif %}        return {{ schema.className }}::fromArray($data);
     }
+{% else %}
+    ) {}
 {% endif %}
 
 {% if config.generateToArray %}
+    /**
+     * @return array<array-key, mixed>
+     */
     public function toArray(): array
     {
+{% if isAdditionalPropertiesMap %}
+        return $this->additionalProperties;
+{% else %}
 {% if schema.parentClass is not null %}
         $data = parent::toArray();
 {% else %}
         $data = [];
 {% endif %}
 {% for prop in schema.properties %}
-{% if not (config.splitReadWriteDtos and prop.readOnly) %}
 {% set isNullableArray = prop.phpType starts with '?' and prop.phpType|slice(1) ends with '[]' and prop.phpType|slice(1) != '[]' %}
 {% set isArray = not isNullableArray and prop.phpType ends with '[]' and prop.phpType != 'array' %}
 {% set bareType = prop.phpType starts with '?' ? prop.phpType|slice(1) : prop.phpType %}
 {% set scalars = ['string', 'int', 'float', 'bool', 'mixed', 'array'] %}
 {% set isObjectProp = bareType not in scalars and not isArray and not isNullableArray %}
-{% set isPhpNullable = prop.phpType starts with '?' %}
+{% set isPhpNullable = prop.phpType starts with '?' or prop.isCircular %}
 {% set hasDiscriminatedUnionItems = prop.schema is not null and prop.schema.items is not null and prop.schema.items.discriminator is not null and (prop.schema.items.oneOf is not empty or prop.schema.items.anyOf is not empty) %}
 {% if isArray %}
 {% set arrayElementType = prop.phpType|slice(0, prop.phpType|length - 2) %}
@@ -233,16 +323,24 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% endif %}
 {% set arrayElementScalars = ['string', 'int', 'float', 'bool', 'mixed', 'array'] %}
 {% set isScalarArray = isArray or isNullableArray ? (arrayElementType in arrayElementScalars) : false %}
+{% set isDateTime = prop.schema is not null and prop.schema.format in ['date-time', 'date-time-only'] %}
+{% set isDate = prop.schema is not null and prop.schema.format == 'date' %}
 {% if config.omitNullsInToArray and isPhpNullable %}
         if ($this->{{ prop.phpName }} !== null) {
 {% if hasDiscriminatedUnionItems %}
             $data['{{ prop.wireName }}'] = array_map(static fn($item) => is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : $item, $this->{{ prop.phpName }});
 {% elseif (isArray or isNullableArray) and not isScalarArray %}
-            $data['{{ prop.wireName }}'] = array_map(static fn($item) => $item->toArray(), $this->{{ prop.phpName }});
+            $data['{{ prop.wireName }}'] = array_map(static fn($item) => is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : $item, $this->{{ prop.phpName }});
 {% elseif isArray or isNullableArray %}
             $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }};
-{% elseif isObjectProp %}
+{% elseif isDateTime %}
+            $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}->format(DATE_ATOM);
+{% elseif isDate %}
+            $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}->format('Y-m-d');
+{% elseif isObjectProp and prop.isEnum %}
             $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}->toArray();
+{% elseif isObjectProp %}
+            $data['{{ prop.wireName }}'] = method_exists($this->{{ prop.phpName }}, 'toArray') ? $this->{{ prop.phpName }}->toArray() : $this->{{ prop.phpName }};
 {% else %}
             $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }};
 {% endif %}
@@ -253,27 +351,40 @@ use Symfony\Component\Validator\Constraints as Assert;
 {% elseif hasDiscriminatedUnionItems and isNullableArray %}
         $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }} !== null ? array_map(static fn($item) => is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : $item, $this->{{ prop.phpName }}) : null;
 {% elseif isArray and not isScalarArray %}
-        $data['{{ prop.wireName }}'] = array_map(static fn($item) => $item->toArray(), $this->{{ prop.phpName }});
+        $data['{{ prop.wireName }}'] = array_map(static fn($item) => is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : $item, $this->{{ prop.phpName }});
 {% elseif isArray %}
         $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }};
 {% elseif isNullableArray and not isScalarArray %}
-        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }} !== null ? array_map(static fn($item) => $item->toArray(), $this->{{ prop.phpName }}) : null;
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }} !== null ? array_map(static fn($item) => is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : $item, $this->{{ prop.phpName }}) : null;
 {% elseif isNullableArray %}
         $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }};
-{% elseif isObjectProp and isPhpNullable %}
-        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}?->toArray();
-{% elseif isObjectProp %}
+{% elseif isDateTime and isPhpNullable %}
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}?->format(DATE_ATOM);
+{% elseif isDateTime %}
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}->format(DATE_ATOM);
+{% elseif isDate and isPhpNullable %}
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}?->format('Y-m-d');
+{% elseif isDate %}
+        $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}->format('Y-m-d');
+{% elseif isObjectProp and prop.isEnum %}
         $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }}->toArray();
+{% elseif isObjectProp and isPhpNullable %}
+        $data['{{ prop.wireName }}'] = is_object($this->{{ prop.phpName }}) && method_exists($this->{{ prop.phpName }}, 'toArray') ? $this->{{ prop.phpName }}->toArray() : $this->{{ prop.phpName }};
+{% elseif isObjectProp %}
+        $data['{{ prop.wireName }}'] = method_exists($this->{{ prop.phpName }}, 'toArray') ? $this->{{ prop.phpName }}->toArray() : $this->{{ prop.phpName }};
 {% else %}
         $data['{{ prop.wireName }}'] = $this->{{ prop.phpName }};
-{% endif %}
 {% endif %}
 {% endif %}
 {% endfor %}
 
         return $data;
+{% endif %}
     }
 
+    /**
+     * @return array<array-key, mixed>
+     */
     public function toRequestArray(): array
     {
         $data = $this->toArray();
@@ -286,6 +397,9 @@ use Symfony\Component\Validator\Constraints as Assert;
         return $data;
     }
 
+    /**
+     * @return array<array-key, mixed>
+     */
     public function toResponseArray(): array
     {
         $data = $this->toArray();
@@ -383,13 +497,18 @@ use Symfony\Component\Validator\Constraints as Assert;
      */
     public static function rules(): array
     {
-        return [
+        $rules = [
 {% for prop in schema.properties %}
 {% if not (config.splitReadWriteDtos and prop.writeOnly) %}
             {{ (prop.wireName)|php_export }} => {{ validation.renderLaravelValidationRules(config, prop)|trim("\n\r")|raw }},
 {% endif %}
 {% endfor %}
         ];
+{% if hasLaravelRuleEnrichment %}
+{{ validation.renderLaravelRuleEnrichments(schema.properties, 'rules', '        ')|trim("\n\r")|raw }}
+{% endif %}
+
+        return $rules;
     }
 
     /**
@@ -399,13 +518,18 @@ use Symfony\Component\Validator\Constraints as Assert;
      */
     public static function requestRules(): array
     {
-        return [
+        $rules = [
 {% for prop in schema.properties %}
 {% if not (config.splitReadWriteDtos and prop.writeOnly) and not prop.readOnly %}
             {{ (prop.wireName)|php_export }} => {{ validation.renderLaravelValidationRules(config, prop, 'request')|trim("\n\r")|raw }},
 {% endif %}
 {% endfor %}
         ];
+{% if hasLaravelRuleEnrichment %}
+{{ validation.renderLaravelRuleEnrichments(schema.properties, 'requestRules', '        ')|trim("\n\r")|raw }}
+{% endif %}
+
+        return $rules;
     }
 
     /**
@@ -415,13 +539,18 @@ use Symfony\Component\Validator\Constraints as Assert;
      */
     public static function responseRules(): array
     {
-        return [
+        $rules = [
 {% for prop in schema.properties %}
 {% if not (config.splitReadWriteDtos and prop.writeOnly) and not prop.writeOnly %}
             {{ (prop.wireName)|php_export }} => {{ validation.renderLaravelValidationRules(config, prop, 'response')|trim("\n\r")|raw }},
 {% endif %}
 {% endfor %}
         ];
+{% if hasLaravelRuleEnrichment %}
+{{ validation.renderLaravelRuleEnrichments(schema.properties, 'responseRules', '        ')|trim("\n\r")|raw }}
+{% endif %}
+
+        return $rules;
     }
 {% endif %}
 }

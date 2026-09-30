@@ -51,7 +51,7 @@ class NamingStrategyTest extends TestCase
 
         self::assertSame('firstName', $naming->propertyName('firstName'));
         self::assertSame('first_name', $naming->propertyName('first_name'));
-        self::assertSame('my-prop', $naming->propertyName('my-prop'));
+        self::assertSame('my_prop', $naming->propertyName('my-prop'));
     }
 
     public function testPropertyNamingReservedWordEscaped(): void
@@ -132,6 +132,14 @@ class NamingStrategyTest extends TestCase
 
         // Schema named "Class" → className produces "Class" which is reserved
         self::assertSame('Class_', $naming->className('class'));
+    }
+
+    public function testLeadingDigitsArePrefixedToCreateValidPhpIdentifiers(): void
+    {
+        $naming = $this->makeNaming(PropertyNaming::CamelCase);
+
+        self::assertSame('Schema9Events', $naming->className('9-events'));
+        self::assertSame('value9Code', $naming->propertyName('9-code'));
     }
 
     public function testInterfaceNameUsesSeparateSuffix(): void

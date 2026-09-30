@@ -7,7 +7,6 @@ Use this adapter when generating clients for projects that already use Symfony c
 ```php
 $config->generationTarget = GenerationTarget::Client;
 $config->httpClient = HttpClientAdapter::SymfonyHttpClient;
-$config->httpClientVersion = '7.0';
 ```
 
 ## Constructor Signature
@@ -23,9 +22,10 @@ public function __construct(
 ## Request Style
 
 ```php
+$url = rtrim($this->baseUrl, '/') . '/pets/' . rawurlencode((string) $petId);
 $response = $this->httpClient->request(
     'GET',
-    $this->baseUrl . "/pets/{$petId}",
+    $url,
 );
 ```
 
@@ -33,22 +33,25 @@ For operations with a request body, the generator sends:
 
 ```php
 [
-    'json' => $body->toArray(),
+    'json' => $body->toRequestArray(),
 ]
 ```
 
-For operations with query parameters, the generator sends:
+Query parameters are serialized into the URL by the generated
+`buildQueryString()` helper according to their OpenAPI `style`/`explode`
+settings.
 
-```php
-[
-    'query' => $query,
-]
-```
+Header parameters are sent as request headers. Cookie parameters are encoded
+into the `Cookie` header. Any non-2xx response throws a `RuntimeException`
+containing the operation ID and HTTP status code.
 
 ## Response Mapping
 
-- Single object responses: `Pet::fromArray($response->toArray())`
-- Array responses: `array_map(static fn(array $item) => Pet::fromArray($item), $response->toArray())`
+- The body is read with `$response->getContent(false)` and decoded by the
+  generated `decodeJsonResponse()` helper, which rejects non-JSON content types
+  and invalid JSON with an `UnexpectedValueException`.
+- Single object responses: `Pet::fromResponseArray($data)`
+- Array responses: each item is mapped with `Pet::fromResponseArray($item)`
 - Void responses: no body mapping
 
 ## Notes

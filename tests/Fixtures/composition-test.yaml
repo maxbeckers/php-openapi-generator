@@ -110,6 +110,11 @@ components:
           dog: '#/components/schemas/Dog'
           cat: '#/components/schemas/Cat'
 
+    UnlabelledAnimal:
+      oneOf:
+        - $ref: '#/components/schemas/Dog'
+        - $ref: '#/components/schemas/Cat'
+
     Dog:
       type: object
       required:

@@ -4,7 +4,8 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "php": ">=8.2"
+        "php": ">=8.2",
+        "symfony/http-client": "7.4.*"
     },
     "require-dev": {
         "maxbeckers/php-openapi-generator": "*"
@@ -20,5 +21,11 @@
             "App\\Api\\": "generated/Api/",
             "App\\Model\\": "generated/Model/"
         }
-    }
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../.."
+        }
+    ]
 }

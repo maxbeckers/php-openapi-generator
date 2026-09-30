@@ -1,29 +1,38 @@
 {% import 'shared/api-operation-macros.php.twig' as operation %}
 {% import 'shared/payload-validation-macros.php.twig' as payloadValidation %}
 {% import 'shared/generation-meta-macros.php.twig' as generation %}
+{% set hasRequestBodies = group.operations|filter(op => op.requestBodyType is not null)|length > 0 %}
+{% set hasResponsePayloads = group.operations|filter(op => op.returnType != 'void')|length > 0 %}
+{% set supportsLaravelValidation = config.validationStrategy.name != 'LaravelValidation' or config.frameworkTarget.value == 'laravel' %}
+{% set needsServerRequestValidation = config.validateServerRequest and hasRequestBodies and supportsLaravelValidation %}
+{% set needsServerResponseValidation = config.validateServerResponse and hasResponsePayloads and supportsLaravelValidation %}
+{% set needsSymfonyValidator = config.validationStrategy.name == 'SymfonyConstraints' and (needsServerRequestValidation or needsServerResponseValidation) %}
 <?php
 
 declare(strict_types=1);
 
 namespace {{ group.namespace }};
+{% if useStatements is not empty or config.frameworkTarget.value == 'symfony' or needsSymfonyValidator %}
 
-{% if config.frameworkTarget.value == 'symfony' %}
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\Routing\Attribute\Route;
-{% endif %}
-{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateServerRequest or config.validateServerResponse) %}
-use Symfony\Component\Validator\Validator\ValidatorInterface;
-use Symfony\Component\Validator\Validation;
 {% endif %}
 {% for use in useStatements %}
 {{ use }}
 {% endfor %}
+{% if config.frameworkTarget.value == 'symfony' %}
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Attribute\Route;
+{% endif %}
+{% if needsSymfonyValidator %}
+use Symfony\Component\Validator\Validation;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+{% endif %}
 
 {{ generation.renderFileHeader(generationMeta, '') }}
+
 abstract class {{ group.className }}Controller implements {{ group.className }}Interface
 {
-{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateServerRequest or config.validateServerResponse) %}
+{% if needsSymfonyValidator %}
     private readonly ValidatorInterface $validator;
 
     public function __construct(?ValidatorInterface $validator = null)
@@ -34,34 +43,198 @@ abstract class {{ group.className }}Controller implements {{ group.className }}I
     }
 
 {% endif %}
-{% if config.validationStrategy.name == 'NativeMethod' and (config.validateServerRequest or config.validateServerResponse) %}
-{{ payloadValidation.renderNativePayloadMethod('    ') }}
+{% if config.validationStrategy.name == 'NativeMethod' and (needsServerRequestValidation or needsServerResponseValidation) %}
+{{ payloadValidation.renderNativePayloadMethod(
+    '    ',
+    false,
+    needsServerRequestValidation,
+    needsServerResponseValidation
+) }}
+{% endif %}
+{% if config.validationStrategy.name == 'SymfonyConstraints' and (needsServerRequestValidation or needsServerResponseValidation) %}
+{{ payloadValidation.renderSymfonyPayloadMethod(
+    '    ',
+    false,
+    needsServerRequestValidation,
+    needsServerResponseValidation
+) }}
+{% endif %}
+{% if config.validationStrategy.name == 'LaravelValidation' and (needsServerRequestValidation or needsServerResponseValidation) %}
+{{ payloadValidation.renderLaravelPayloadMethod(
+    '    ',
+    needsServerRequestValidation,
+    needsServerResponseValidation
+) }}
+{% endif %}
+{% set hasFrameworkActions = config.frameworkTarget.value == 'symfony' or config.frameworkTarget.value == 'laravel' %}
+{% set hasActionParameters = hasFrameworkActions and group.operations|filter(op => op.allParams() is not empty)|length > 0 %}
+{% set hasActionQueryParameters = hasFrameworkActions and group.operations|filter(op => op.queryParams is not empty)|length > 0 %}
+{% if hasActionQueryParameters %}
+    /**
+     * Reads all raw values of a query parameter, keeping repeated keys (tags=a&tags=b) and "name[]" keys.
+     *
+     * @return list<string>
+     */
+    protected function queryParameterValues({{ config.frameworkTarget.value == 'symfony' ? 'Request' : '\\Illuminate\\Http\\Request' }} $request, string $name): array
+    {
+        $queryString = $request->server->get('QUERY_STRING');
+        if (!is_string($queryString) || $queryString === '') {
+            $value = $request->query->all()[$name] ?? null;
+            $values = is_array($value) ? $value : [$value];
+
+            return array_values(array_map('strval', array_filter($values, 'is_scalar')));
+        }
+
+        $values = [];
+        foreach (explode('&', $queryString) as $pair) {
+            if ($pair === '') {
+                continue;
+            }
+            [$key, $value] = array_pad(explode('=', $pair, 2), 2, '');
+            $key = urldecode($key);
+            if ($key === $name || $key === $name . '[]') {
+                $values[] = urldecode($value);
+            }
+        }
+
+        return $values;
+    }
 
 {% endif %}
-{% if config.validationStrategy.name == 'SymfonyConstraints' and (config.validateServerRequest or config.validateServerResponse) %}
-{{ payloadValidation.renderSymfonyPayloadMethod('    ') }}
+{% if hasActionParameters %}
+    /**
+     * Converts raw path/query/header/cookie values to the declared parameter type.
+     *
+     * @param non-empty-string|null $delimiter Splits each raw value into array items; null keeps values as items
+     *
+     * @throws \Symfony\Component\HttpKernel\Exception\BadRequestHttpException when a value is missing or invalid
+     */
+    protected function parseParameter(
+        mixed $raw,
+        string $name,
+        string $type,
+        bool $required,
+        bool $isArray = false,
+        ?string $delimiter = null,
+    ): mixed {
+        $values = is_array($raw) ? $raw : [$raw];
+        $values = array_values(array_map('strval', array_filter($values, static fn(mixed $value): bool => is_scalar($value))));
+        if ($values === []) {
+            if ($required) {
+                throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException(sprintf('Missing required parameter "%s".', $name));
+            }
+
+            return null;
+        }
+
+        if (!$isArray) {
+            return $this->castParameterValue($values[count($values) - 1], $name, $type);
+        }
+
+        if ($delimiter !== null) {
+            $items = [];
+            foreach ($values as $value) {
+                foreach ($value === '' ? [] : explode($delimiter, $value) as $item) {
+                    $items[] = $item;
+                }
+            }
+            $values = $items;
+        }
+
+        return array_map(fn(string $value): mixed => $this->castParameterValue($value, $name, $type), $values);
+    }
+
+    protected function castParameterValue(string $value, string $name, string $type): mixed
+    {
+        $result = match ($type) {
+            'string' => $value,
+            'int' => filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE),
+            'float' => filter_var($value, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE),
+            'bool' => filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
+            'date' => \DateTimeImmutable::createFromFormat('!Y-m-d', $value) ?: null,
+            'date-time' => \DateTimeImmutable::createFromFormat(\DateTimeInterface::RFC3339, $value)
+                ?: \DateTimeImmutable::createFromFormat(\DateTimeInterface::RFC3339_EXTENDED, $value)
+                ?: null,
+            default => null,
+        };
+
+        if ($result === null && is_subclass_of($type, \BackedEnum::class)) {
+            foreach ($type::cases() as $case) {
+                if ((string) $case->value === $value) {
+                    $result = $case;
+
+                    break;
+                }
+            }
+        }
+
+        if ($result === null) {
+            throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException(sprintf('Invalid value for parameter "%s".', $name));
+        }
+
+        return $result;
+    }
 
 {% endif %}
-{% if config.validationStrategy.name == 'LaravelValidation' and (config.validateServerRequest or config.validateServerResponse) %}
-{{ payloadValidation.renderLaravelPayloadMethod('    ') }}
+{% if hasFrameworkActions and hasRequestBodies %}
+    /**
+     * Decodes the JSON request body and hydrates it with the given factory.
+     *
+     * @template T of object
+     *
+     * @param \Closure(array<array-key, mixed>): T $factory
+     *
+     * @throws \Symfony\Component\HttpKernel\Exception\BadRequestHttpException when the body is missing, malformed or cannot be hydrated
+     *
+     * @return ($required is true ? T : T|null)
+     */
+    protected function parseJsonRequestBody({{ config.frameworkTarget.value == 'symfony' ? 'Request' : '\\Illuminate\\Http\\Request' }} $request, \Closure $factory, bool $required = true): ?object
+    {
+        $content = $request->getContent();
+        if (trim($content) === '') {
+            if ($required) {
+                throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException('Request body is required.');
+            }
+
+            return null;
+        }
+
+        try {
+            $data = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException('Request body is not valid JSON.', $exception);
+        }
+
+        if (!is_array($data)) {
+            throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException('Request body must be a JSON object or array.');
+        }
+
+        try {
+            return $factory($data);
+        } catch (\InvalidArgumentException $exception) {
+            throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException('Invalid request body: ' . $exception->getMessage(), $exception);
+        } catch (\TypeError|\ValueError $exception) {
+            throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException('Invalid request body.', $exception);
+        }
+    }
 
 {% endif %}
 {% for op in group.operations %}
+{% if not loop.first %}
+
+{% endif %}
 {% if config.frameworkTarget.value == 'symfony' %}
 {% include 'server/controller/symfony-action.php.twig' %}
-
 {% elseif config.frameworkTarget.value == 'laravel' %}
 {% include 'server/controller/laravel-action.php.twig' %}
-
 {% endif %}
 {% endfor %}
-
 {% for op in group.operations %}
-{% set signature = operation.renderSignature(op, false)|trim("\n\r") %}
+
+{{ operation.renderDocblock(op, '    ') }}{% set signature = operation.renderSignature(op)|trim("\n\r") %}
     {{ signature }}
     {
         throw new \BadMethodCallException('Override {{ op.operationId }}() or {{ op.operationId }}Action() to implement this operation.');
     }
-
 {% endfor %}
 }

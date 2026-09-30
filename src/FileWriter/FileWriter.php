@@ -17,6 +17,13 @@ class FileWriter
     public function writeAll(string $outputDir, array $files): void
     {
         foreach ($files as $relativePath => $content) {
+            if ($this->isAbsolutePath($relativePath) || $this->containsParentTraversal($relativePath)) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Generated file path must stay within the output directory: %s',
+                    $relativePath,
+                ));
+            }
+
             $absolutePath = rtrim($outputDir, '/\\') . DIRECTORY_SEPARATOR . ltrim($relativePath, '/\\');
             $this->write($absolutePath, $content);
         }
@@ -30,7 +37,7 @@ class FileWriter
             throw new \RuntimeException(sprintf('Unable to create directory: %s', $dir));
         }
 
-        if (file_put_contents($absolutePath, $content) === false) {
+        if (@file_put_contents($absolutePath, $content) === false) {
             throw new \RuntimeException(sprintf('Unable to write file: %s', $absolutePath));
         }
     }
@@ -52,8 +59,23 @@ class FileWriter
 
         foreach ($iterator as $file) {
             if ($file->isFile()) {
-                unlink($file->getRealPath());
+                $path = $file->getRealPath();
+                if ($path === false || !@unlink($path)) {
+                    throw new \RuntimeException(sprintf('Unable to remove file: %s', $file->getPathname()));
+                }
             }
         }
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return str_starts_with($path, '/')
+            || str_starts_with($path, '\\')
+            || (strlen($path) > 1 && $path[1] === ':');
+    }
+
+    private function containsParentTraversal(string $path): bool
+    {
+        return in_array('..', preg_split('~[/\\\\]+~', $path) ?: [], true);
     }
 }

@@ -19,11 +19,7 @@ This page covers the most important options in `php-openapi-generator.php`.
 
 - `$config->generationTarget = GenerationTarget::Server|Client`
 - `$config->frameworkTarget = FrameworkTarget::None|Symfony|Laravel` (server mode)
-- `$config->frameworkVersion = '8.0'|'9.0'|'10.0'|'11.0'|...` (optional, server mode)
 - `$config->httpClient = HttpClientAdapter::SymfonyHttpClient|Guzzle|Psr18` (client mode)
-- `$config->httpClientVersion = '6.4'|'7.0'|'7.8'|...` (optional, client mode)
-
-`frameworkVersion` and `httpClientVersion` are optional string values you can set when generated code must react to framework- or transport-specific breaking changes. They are intended for template selection and conditional generation logic, similar to how `$config->phpVersion` is already used for PHP-specific output.
 
 ## Model Generation Options
 
@@ -69,11 +65,19 @@ Generate only selected operations and their reachable schema graph:
 
 - `$config->autoGenerate` (run on Composer hook)
 - `$config->addPlugin` (enable plugin hook integration)
-- `$config->verbosePluginWarnings`
-- `$config->typedErrorResponses`
-- `$config->generateSecuritySchemes`
+- `$config->typedErrorResponses` (client: throw `Exception\ApiException` subclasses per error status, see [Client Generation](./client-generation.md#typed-error-responses))
+- `$config->generateSecuritySchemes` (client: generate `ApiCredentials` and apply security schemes, see [Client Generation](./client-generation.md#authentication))
 
 For `x-*` extension usage and custom plugin hooks, see [Extension Plugins](./plugins.md).
+
+The Composer hook does nothing when no `php-openapi-generator.php` file is
+present. Set either `autoGenerate=false` or `addPlugin=false` to disable
+generation from `post-autoload-dump`.
+
+Generation overwrites files with matching generated paths but does not remove
+stale files left by schemas or operations removed from the specification. Run
+`vendor/bin/openapi-gen clean` before generation when stale output must be
+removed.
 
 ## Example Config
 
@@ -98,7 +102,6 @@ $config->apiNamespace = 'App\\Api';
 
 $config->generationTarget = GenerationTarget::Server;
 $config->frameworkTarget = FrameworkTarget::Symfony;
-$config->frameworkVersion = '8.0';
 
 $config->phpReadonly = true;
 $config->validationStrategy = ValidationStrategy::SymfonyConstraints;
@@ -107,7 +110,6 @@ $config->validateServerRequest = true;
 // Client-only example when generating HTTP clients instead of server glue:
 // $config->generationTarget = GenerationTarget::Client;
 // $config->httpClient = HttpClientAdapter::Guzzle;
-// $config->httpClientVersion = '7.8';
 
 $config->includeTags = ['pets'];
 $config->excludeOperationIds = ['deletePet'];

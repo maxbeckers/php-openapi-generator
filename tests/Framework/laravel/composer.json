@@ -1,0 +1,21 @@
+{
+  "name": "openapi-generator/framework-laravel-tests",
+  "type": "project",
+  "require": {
+    "php": ">=8.2",
+    "maxbeckers/php-openapi-generator": "*@dev"
+  },
+  "require-dev": {
+    "orchestra/testbench": "^10.0|^11.0",
+    "phpunit/phpunit": "^10.0|^11.0"
+  },
+  "repositories": [
+    {"type": "path", "url": "../../..", "options": {"symlink": true}}
+  ],
+  "config": {
+    "allow-plugins": {"maxbeckers/php-openapi-generator": false}
+  },
+  "scripts": {
+    "test": "@php vendor/bin/phpunit -c phpunit.xml.dist"
+  }
+}

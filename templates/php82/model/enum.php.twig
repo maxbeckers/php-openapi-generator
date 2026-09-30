@@ -6,6 +6,7 @@ declare(strict_types=1);
 namespace {{ schema.namespace }};
 
 {{ generation.renderFileHeader(generationMeta, '') }}
+
 {% if schema.schema.description is not null or schema.schema.deprecated %}
 /**
 {% if schema.schema.description is not null %} * {{ schema.schema.description|raw }}
@@ -13,29 +14,62 @@ namespace {{ schema.namespace }};
 {% endif %}
  */
 {% endif %}
-enum {{ schema.className }}: {% if isIntEnum %}int{% else %}string{% endif %}
+enum {{ schema.className }}: {{ isIntEnum ? 'int' : 'string' }}
 {
 {% for case in enumCases %}
     case {{ case.caseName }} = {% if isIntEnum %}{{ case.value }}{% else %}{{ case.value|php_export }}{% endif %};
 {% endfor %}
 
-    public static function fromArray(mixed $value): {% if config.enumUnknownDefault.value == 'throw' %}{{ schema.className }}{% else %}?{{ schema.className }}{% endif %}
+    public static function fromArray(mixed $value): {{ config.enumUnknownDefault.value == 'throw' ? schema.className : '?' ~ schema.className }}
     {
+{% if isIntEnum %}
+        if (!is_int($value) && !is_string($value)) {
 {% if config.enumUnknownDefault.value == 'throw' %}
-        return {{ schema.className }}::from({% if isIntEnum %}(int) $value{% else %}(string) $value{% endif %});
+            throw new \ValueError('Invalid value for {{ schema.className }}.');
 {% elseif config.enumUnknownDefault.value == 'raw' %}
-        $case = {{ schema.className }}::tryFrom({% if isIntEnum %}(int) $value{% else %}(string) $value{% endif %});
+            return {{ schema.className }}::cases()[0];
+{% else %}
+            return null;
+{% endif %}
+        }
+        if (is_string($value) && !is_numeric($value)) {
+{% if config.enumUnknownDefault.value == 'throw' %}
+            throw new \ValueError('Invalid value for {{ schema.className }}.');
+{% elseif config.enumUnknownDefault.value == 'raw' %}
+            return {{ schema.className }}::cases()[0];
+{% else %}
+            return null;
+{% endif %}
+        }
+        $value = (int) $value;
+{% else %}
+        if (!is_scalar($value)) {
+{% if config.enumUnknownDefault.value == 'throw' %}
+            throw new \ValueError('Invalid value for {{ schema.className }}.');
+{% elseif config.enumUnknownDefault.value == 'raw' %}
+            return {{ schema.className }}::cases()[0];
+{% else %}
+            return null;
+{% endif %}
+        }
+        $value = (string) $value;
+{% endif %}
+{% if config.enumUnknownDefault.value == 'throw' %}
+        return {{ schema.className }}::from($value);
+{% elseif config.enumUnknownDefault.value == 'raw' %}
+        $case = {{ schema.className }}::tryFrom($value);
         if ($case === null) {
             return {{ schema.className }}::cases()[0];
         }
 
         return $case;
 {% else %}
-        return {{ schema.className }}::tryFrom({% if isIntEnum %}(int) $value{% else %}(string) $value{% endif %});
+
+        return {{ schema.className }}::tryFrom($value);
 {% endif %}
     }
 
-    public function toArray(): {% if isIntEnum %}int{% else %}string{% endif %}
+    public function toArray(): {{ isIntEnum ? 'int' : 'string' }}
     {
         return $this->value;
     }

@@ -1,0 +1,78 @@
+openapi: "3.0.0"
+info:
+  title: Framework widget API
+  version: "1.0.0"
+paths:
+  /widgets:
+    post:
+      tags: [Widgets]
+      operationId: createWidget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WidgetInput'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Widget'
+  /widgets/{widgetId}:
+    parameters:
+      - name: widgetId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Widgets]
+      operationId: getWidget
+      responses:
+        "200":
+          description: Widget
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Widget'
+    put:
+      tags: [Widgets]
+      operationId: updateWidget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WidgetInput'
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Widget'
+    delete:
+      tags: [Widgets]
+      operationId: deleteWidget
+      responses:
+        "204":
+          description: Deleted
+components:
+  schemas:
+    WidgetInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+    Widget:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string

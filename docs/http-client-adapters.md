@@ -41,10 +41,7 @@ use MaxBeckers\OpenApiGenerator\Config\HttpClientAdapter;
 
 $config->generationTarget = GenerationTarget::Client;
 $config->httpClient = HttpClientAdapter::SymfonyHttpClient; // symfony|guzzle|psr18
-$config->httpClientVersion = '7.0'; // optional, when adapter majors require different generated code
 ```
-
-Leave `$config->httpClientVersion` as `null` if you do not need adapter-version-specific generation yet.
 
 ## Adapter-Specific Guides
 

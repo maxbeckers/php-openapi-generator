@@ -12,6 +12,7 @@
         "symfony/flex": "^2.11",
         "symfony/framework-bundle": "7.4.*",
         "symfony/runtime": "7.4.*",
+        "symfony/validator": "7.4.*",
         "symfony/yaml": "7.4.*"
     },
     "require-dev": {

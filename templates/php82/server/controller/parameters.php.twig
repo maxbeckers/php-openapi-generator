@@ -1,0 +1,18 @@
+{% for p in op.allParams() %}
+{% if p.in == 'path' %}
+{% set raw = framework == 'laravel' ? "$request->route('" ~ p.wireName ~ "')" : "$request->attributes->get('" ~ p.wireName ~ "')" %}
+{% elseif p.in == 'query' %}
+{% set raw = "$this->queryParameterValues($request, '" ~ p.wireName ~ "')" %}
+{% elseif p.in == 'header' %}
+{% set raw = "$request->headers->get('" ~ p.wireName ~ "')" %}
+{% else %}
+{% set raw = "$request->cookies->get('" ~ p.wireName ~ "')" %}
+{% endif %}
+{% set typeExpression = p.shortValueType() is not null ? p.shortValueType() ~ '::class' : "'" ~ p.valueType ~ "'" %}
+{% if p.isArray() %}
+{% set delimiter = p.isMultiValueQuery() ? 'null' : "'" ~ p.arrayDelimiter() ~ "'" %}
+            {{ p.name }}: $this->parseParameter({{ raw }}, '{{ p.wireName }}', {{ typeExpression }}, {{ p.required ? 'true' : 'false' }}, true, {{ delimiter }}),
+{% else %}
+            {{ p.name }}: $this->parseParameter({{ raw }}, '{{ p.wireName }}', {{ typeExpression }}, {{ p.required ? 'true' : 'false' }}),
+{% endif %}
+{% endfor %}

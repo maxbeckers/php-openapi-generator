@@ -182,7 +182,20 @@ class ApiGenerationTest extends TestCase
         $content = $this->readApi('OrdersApiController.php');
 
         self::assertStringContainsString('CreateOrderRequest::fromRequestArray(', $content);
-        self::assertStringContainsString('$request->toArray()', $content);
+        self::assertStringContainsString('$this->parseJsonRequestBody($request, ', $content);
+        self::assertStringContainsString('protected function parseJsonRequestBody(Request $request, \Closure $factory, bool $required = true): ?object', $content);
+    }
+
+    public function testSymfonyControllerReadsHeaderAndCookieParameters(): void
+    {
+        $config = $this->makeServerConfig(FrameworkTarget::Symfony);
+        $config->specFile = 'header-cookie-errors.yaml';
+        $this->service->generate($config, self::FIXTURES_DIR);
+
+        $content = $this->readApi('WidgetsApiController.php');
+
+        self::assertStringContainsString('$request->headers->get(\'X-Request-ID\')', $content);
+        self::assertStringContainsString('$request->cookies->get(\'session\')', $content);
     }
 
     public function testSymfonyControllerFilesAreValidPhp(): void
@@ -233,11 +246,10 @@ class ApiGenerationTest extends TestCase
 
         $content = $this->readApi('OrdersApiController.php');
 
-        self::assertStringContainsString('private function validateNativePayload(mixed $value): void', $content);
         self::assertStringContainsString('private function validateNativeRequestPayload(mixed $value): void', $content);
-        self::assertStringContainsString('private function validateNativeResponsePayload(mixed $value): void', $content);
-        self::assertStringContainsString('$body = CreateOrderRequest::fromRequestArray($request->toArray());', $content);
+        self::assertStringContainsString('$body = $this->parseJsonRequestBody($request, static fn(array $data): CreateOrderRequest => CreateOrderRequest::fromRequestArray($data));', $content);
         self::assertStringContainsString('$this->validateNativeRequestPayload($body);', $content);
+        self::assertStringContainsString('throw new \Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException($exception->getMessage(), $exception);', $content);
         self::assertStringContainsString('body: $body,', $content);
     }
 
@@ -266,13 +278,11 @@ class ApiGenerationTest extends TestCase
         self::assertStringContainsString('use Symfony\\Component\\Validator\\Validator\\ValidatorInterface;', $content);
         self::assertStringContainsString('public function __construct(?ValidatorInterface $validator = null)', $content);
         self::assertStringContainsString('$this->validator = $validator ?? Validation::createValidatorBuilder()', $content);
-        self::assertStringContainsString('private function validateSymfonyPayload(mixed $value, ?\SplObjectStorage $visited = null): void', $content);
         self::assertStringContainsString('private function validateSymfonyRequestPayload(mixed $value, ?\SplObjectStorage $visited = null): void', $content);
-        self::assertStringContainsString('private function validateSymfonyResponsePayload(mixed $value, ?\SplObjectStorage $visited = null): void', $content);
-        self::assertStringContainsString('$violations = $this->validator->validate($value);', $content);
+        self::assertStringContainsString('$violations = $this->validator->validate($value, groups: [\'request\']);', $content);
         self::assertStringContainsString('foreach (get_object_vars($value) as $propertyValue) {', $content);
         self::assertStringContainsString('$this->validateSymfonyRequestPayload($propertyValue, $visited);', $content);
-        self::assertStringContainsString('$body = CreateOrderRequest::fromRequestArray($request->toArray());', $content);
+        self::assertStringContainsString('$body = $this->parseJsonRequestBody($request, static fn(array $data): CreateOrderRequest => CreateOrderRequest::fromRequestArray($data));', $content);
         self::assertStringContainsString('$this->validateSymfonyRequestPayload($body);', $content);
         self::assertStringContainsString('body: $body,', $content);
     }
@@ -346,7 +356,7 @@ class ApiGenerationTest extends TestCase
         $content = $this->readApi('OrdersApiController.php');
 
         self::assertStringContainsString('JsonResponse', $content);
-        self::assertStringContainsString('response()->json(', $content);
+        self::assertStringContainsString('new \\Illuminate\\Http\\JsonResponse(', $content);
     }
 
     public function testLaravelControllerDeserializesRequestBody(): void
@@ -357,7 +367,20 @@ class ApiGenerationTest extends TestCase
         $content = $this->readApi('OrdersApiController.php');
 
         self::assertStringContainsString('CreateOrderRequest::fromRequestArray(', $content);
-        self::assertStringContainsString('$request->all()', $content);
+        self::assertStringContainsString('$this->parseJsonRequestBody($request, ', $content);
+        self::assertStringContainsString('protected function parseJsonRequestBody(\Illuminate\Http\Request $request, \Closure $factory, bool $required = true): ?object', $content);
+    }
+
+    public function testLaravelControllerReadsHeaderAndCookieParameters(): void
+    {
+        $config = $this->makeServerConfig(FrameworkTarget::Laravel);
+        $config->specFile = 'header-cookie-errors.yaml';
+        $this->service->generate($config, self::FIXTURES_DIR);
+
+        $content = $this->readApi('WidgetsApiController.php');
+
+        self::assertStringContainsString('$request->headers->get(\'X-Request-ID\')', $content);
+        self::assertStringContainsString('$request->cookies->get(\'session\')', $content);
     }
 
     public function testLaravelControllerFileIsValidPhp(): void
@@ -383,7 +406,7 @@ class ApiGenerationTest extends TestCase
         self::assertStringContainsString('public function deletePetAction(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse', $content);
         self::assertStringContainsString('$this->deletePet(', $content);
         self::assertStringNotContainsString('$result = $this->deletePet(', $content);
-        self::assertStringContainsString('return response()->json(null, 204);', $content);
+        self::assertStringContainsString('return new \\Illuminate\\Http\\JsonResponse(null, 204);', $content);
     }
 
     public function testLaravelControllerWithLaravelValidationStrategy(): void
@@ -396,10 +419,10 @@ class ApiGenerationTest extends TestCase
 
         $content = $this->readApi('OrdersApiController.php');
 
-        self::assertStringContainsString('private function validateLaravelPayload(mixed $value): void', $content);
         self::assertStringContainsString('private function validateLaravelRequestPayload(mixed $value): void', $content);
         self::assertStringContainsString('private function validateLaravelResponsePayload(mixed $value): void', $content);
         self::assertStringContainsString('$this->validateLaravelRequestPayload($body);', $content);
+        self::assertStringContainsString('throw new \Illuminate\Validation\ValidationException($validator);', $content);
     }
 
     public function testSymfonyControllerUsesDirectionalDtoMethodsForReadWriteFlags(): void
@@ -410,7 +433,7 @@ class ApiGenerationTest extends TestCase
 
         $content = $this->readApi('AccountsApiController.php');
 
-        self::assertStringContainsString('Account::fromRequestArray($request->toArray())', $content);
+        self::assertStringContainsString('Account::fromRequestArray($data)', $content);
         self::assertStringContainsString('return new JsonResponse($result->toResponseArray(), 201);', $content);
     }
 
@@ -422,8 +445,8 @@ class ApiGenerationTest extends TestCase
 
         $content = $this->readApi('AccountsApiController.php');
 
-        self::assertStringContainsString('Account::fromRequestArray($request->all())', $content);
-        self::assertStringContainsString('return response()->json($result->toResponseArray(), 201);', $content);
+        self::assertStringContainsString('Account::fromRequestArray($data)', $content);
+        self::assertStringContainsString('return new \\Illuminate\\Http\\JsonResponse($result->toResponseArray(), 201);', $content);
     }
 
     // =========================================================================
@@ -545,17 +568,17 @@ class ApiGenerationTest extends TestCase
 
         $content = $this->readApi('OrdersApiClient.php');
 
-        self::assertStringContainsString('Order::fromResponseArray($response->toArray())', $content);
+        self::assertStringContainsString('Order::fromResponseArray($data)', $content);
     }
 
-    public function testSymfonyClientArrayResponseUsesArrayMap(): void
+    public function testSymfonyClientDeserializesArrayItems(): void
     {
         $config = $this->makeClientConfig(HttpClientAdapter::SymfonyHttpClient);
         $this->service->generate($config, self::FIXTURES_DIR);
 
         $content = $this->readApi('CatalogApiClient.php');
 
-        self::assertStringContainsString('array_map(', $content);
+        self::assertStringContainsString('foreach ($data as $item)', $content);
         self::assertStringContainsString('CatalogItem::fromResponseArray(', $content);
     }
 
@@ -567,7 +590,7 @@ class ApiGenerationTest extends TestCase
 
         $content = $this->readApi('PetsApiClient.php');
 
-        self::assertStringContainsString('$this->baseUrl . "/pets/{$petId}"', $content);
+        self::assertStringContainsString('rtrim($this->baseUrl, \'/\') . \'/pets/\' . rawurlencode((string) $petId)', $content);
         self::assertStringNotContainsString(". ''", $content);
     }
 
@@ -592,9 +615,7 @@ class ApiGenerationTest extends TestCase
 
         $content = $this->readApi('OrdersApiClient.php');
 
-        self::assertStringContainsString('private function validateNativePayload(mixed $value): void', $content);
         self::assertStringContainsString('private function validateNativeRequestPayload(mixed $value): void', $content);
-        self::assertStringContainsString('private function validateNativeResponsePayload(mixed $value): void', $content);
         self::assertStringContainsString('$this->validateNativeRequestPayload($body);', $content);
     }
 
@@ -607,7 +628,7 @@ class ApiGenerationTest extends TestCase
 
         $content = $this->readApi('OrdersApiClient.php');
 
-        self::assertStringContainsString('$result = Order::fromResponseArray($response->toArray());', $content);
+        self::assertStringContainsString('$result = Order::fromResponseArray($data);', $content);
         self::assertStringContainsString('$this->validateNativeResponsePayload($result);', $content);
         self::assertStringContainsString('return $result;', $content);
     }
@@ -625,10 +646,8 @@ class ApiGenerationTest extends TestCase
         self::assertStringContainsString('use Symfony\\Component\\Validator\\Validator\\ValidatorInterface;', $content);
         self::assertStringContainsString('?ValidatorInterface $validator = null,', $content);
         self::assertStringContainsString('$this->validator = $validator ?? Validation::createValidatorBuilder()', $content);
-        self::assertStringContainsString('private function validateSymfonyPayload(mixed $value, ?\SplObjectStorage $visited = null): void', $content);
         self::assertStringContainsString('private function validateSymfonyRequestPayload(mixed $value, ?\SplObjectStorage $visited = null): void', $content);
-        self::assertStringContainsString('private function validateSymfonyResponsePayload(mixed $value, ?\SplObjectStorage $visited = null): void', $content);
-        self::assertStringContainsString('$violations = $this->validator->validate($value);', $content);
+        self::assertStringContainsString('$violations = $this->validator->validate($value, groups: [\'request\']);', $content);
         self::assertStringContainsString('foreach (get_object_vars($value) as $propertyValue) {', $content);
         self::assertStringContainsString('$this->validateSymfonyRequestPayload($propertyValue, $visited);', $content);
         self::assertStringContainsString('$this->validateSymfonyRequestPayload($body);', $content);
@@ -655,7 +674,7 @@ class ApiGenerationTest extends TestCase
         $content = $this->readApi('AccountsApiClient.php');
 
         self::assertStringContainsString("'json' => \$body->toRequestArray()", $content);
-        self::assertStringContainsString('Account::fromResponseArray($response->toArray())', $content);
+        self::assertStringContainsString('Account::fromResponseArray($data)', $content);
     }
 
     // =========================================================================
@@ -694,6 +713,26 @@ class ApiGenerationTest extends TestCase
         self::assertStringContainsString('json_decode(', $content);
         self::assertStringContainsString('JSON_THROW_ON_ERROR', $content);
         self::assertStringContainsString('Order::fromResponseArray(', $content);
+    }
+
+    public function testClientsSendHeaderAndCookieParametersAndRejectErrorStatuses(): void
+    {
+        foreach (HttpClientAdapter::cases() as $adapter) {
+            $config = $this->makeClientConfig($adapter);
+            $config->specFile = 'header-cookie-errors.yaml';
+            $this->service->generate($config, self::FIXTURES_DIR);
+
+            $content = $this->readApi('WidgetsApiClient.php');
+
+            self::assertStringContainsString("'X-Request-ID' =>", $content);
+            self::assertStringContainsString('$this->serializeParameterValue($xRequestID)', $content);
+            self::assertStringContainsString("'session=' . rawurlencode(\$this->serializeParameterValue(\$session))", $content);
+            self::assertStringContainsString("assertSuccessfulStatus(\$statusCode, 'getWidget')", $content);
+            self::assertStringContainsString('failed with HTTP status', $content);
+            if ($adapter === HttpClientAdapter::Guzzle) {
+                self::assertStringContainsString('$options[RequestOptions::HTTP_ERRORS] = false;', $content);
+            }
+        }
     }
 
     public function testGuzzleClientFilesAreValidPhp(): void

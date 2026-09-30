@@ -32,13 +32,14 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Api\Api\PetsApiController;
+use App\Api\PetsApiController;
 use App\Model\NewPet;
 use App\Model\Pet;
 use App\Repository\PetRepository;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\Routing\Attribute\Route;
 
 // generated abstract controller
 
@@ -46,6 +47,7 @@ final class PetController extends PetsApiController
 {
     public function __construct(private readonly PetRepository $repository)
     {
+        parent::__construct();
     }
 
     // =========================================================================
@@ -57,6 +59,7 @@ final class PetController extends PetsApiController
     // =========================================================================
 
     #[\Override]
+    #[Route('/pets/{petId}', methods: ['PUT'])]
     public function upsertPetAction(Request $request): JsonResponse
     {
         $petId = (int) $request->attributes->get('petId');

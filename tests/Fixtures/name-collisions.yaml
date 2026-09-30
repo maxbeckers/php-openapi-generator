@@ -1,0 +1,11 @@
+openapi: "3.0.0"
+info:
+  title: Name Collision
+  version: "1.0.0"
+paths: {}
+components:
+  schemas:
+    user-id:
+      type: object
+    user_id:
+      type: object

@@ -1,0 +1,259 @@
+openapi: 3.1.0
+info:
+  title: Generator Edge Cases
+  version: "1.0.0"
+paths:
+  /records/{recordId}:
+    parameters:
+      - name: recordId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+    get:
+      tags: [records, audit]
+      deprecated: true
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 2
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/RecordState"
+        - name: nullableState
+          in: query
+          schema:
+            $ref: "#/components/schemas/NullableState"
+        - name: priority
+          in: query
+          schema:
+            $ref: "#/components/schemas/Priority"
+        - name: default
+          in: query
+          deprecated: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Record"
+            text/plain:
+              schema:
+                type: string
+        "204":
+          description: No content
+    put:
+      operationId: update-record
+      tags: [records]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordInput"
+      responses:
+        default:
+          description: Default record response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Record"
+  /unlabelled:
+    get:
+      responses:
+        "200":
+          description: Scalar alias
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordId"
+  /odd:
+    get:
+      responses:
+        "200":
+          description: Identifier-safe schema and property names
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/9-events"
+  /reserved:
+    get:
+      operationId: get-reserved
+      responses:
+        "200":
+          description: Reserved PHP class name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/class"
+  /aliases/ids:
+    get:
+      operationId: listRecordIds
+      tags: [aliases]
+      responses:
+        "200":
+          description: Array alias
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordIds"
+  /aliases/map:
+    get:
+      operationId: getRecordMap
+      tags: [aliases]
+      responses:
+        "200":
+          description: Map
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordMap"
+  /combined:
+    get:
+      operationId: getCombined
+      tags: [records]
+      responses:
+        "200":
+          description: Combined record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Combined"
+  /reserved-operation:
+    get:
+      operationId: match
+      tags: [records]
+      responses:
+        "204":
+          description: No content
+  /upload-json:
+    post:
+      operationId: uploadJson
+      tags: [records]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordInput"
+      responses:
+        "204":
+          description: Uploaded
+components:
+  schemas:
+    Record:
+      type: object
+      properties:
+        note:
+          type: [string, "null"]
+          description: Optional note
+        score:
+          type: number
+          exclusiveMinimum: 1
+          exclusiveMaximum: 10
+        fixed:
+          const: locked
+        profile:
+          type: object
+          properties:
+            aliases:
+              type: array
+              items:
+                type: object
+                required: [value]
+                properties:
+                  value:
+                    type: string
+        id:
+          type: string
+          readOnly: true
+        createdAt:
+          type: string
+          format: date
+        status:
+          $ref: "#/components/schemas/RecordState"
+      required: [id, createdAt, status]
+    SortCheck:
+      type: object
+      properties:
+        optionalFirst:
+          type: string
+        requiredSecond:
+          type: string
+      required: [requiredSecond]
+    RecordInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        password:
+          type: string
+          writeOnly: true
+    RecordState:
+      type: string
+      enum: [open, closed]
+    NullableState:
+      type: [string, "null"]
+      enum: [draft, published]
+    Priority:
+      type: integer
+      enum: [1, 2]
+    RecordId:
+      type: string
+    RecordIds:
+      type: array
+      items:
+        type: string
+    RecordMap:
+      type: object
+      additionalProperties:
+        type: integer
+    9-events:
+      type: object
+      required: [9-code]
+      properties:
+        9-code:
+          type: string
+    class:
+      type: object
+      properties:
+        class:
+          type: string
+        legacy-name:
+          type: string
+    MultiBase:
+      type: object
+      required: [baseName]
+      properties:
+        baseName:
+          type: string
+    MultiExtra:
+      type: object
+      required: [extraName]
+      properties:
+        extraName:
+          type: string
+    Combined:
+      allOf:
+        - $ref: "#/components/schemas/MultiBase"
+        - $ref: "#/components/schemas/MultiExtra"
+        - type: object
+          required: [combinedName]
+          properties:
+            combinedName:
+              type: string
+    Choice:
+      oneOf:
+        - $ref: "#/components/schemas/Record"
+        - $ref: "#/components/schemas/Combined"

@@ -17,6 +17,8 @@ class Schema
     public bool $writeOnly = false;
     public mixed $default = null;
     public bool $hasDefault = false;
+    public mixed $const = null;
+    public bool $hasConst = false;
     public mixed $example = null;
 
     // Object

@@ -1,4 +1,5 @@
 /vendor
+/tests/Framework/*/vendor/
 .phpunit.result.cache
 
 /var

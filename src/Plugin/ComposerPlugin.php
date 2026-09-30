@@ -62,7 +62,7 @@ class ComposerPlugin implements PluginInterface, EventSubscriberInterface
             return;
         }
 
-        if (!$config->autoGenerate) {
+        if (!$config->addPlugin || !$config->autoGenerate) {
             return;
         }
 

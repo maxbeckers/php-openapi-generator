@@ -202,7 +202,7 @@ PHP;
         self::assertStringContainsString('#[Assert\\NotNull(groups: ', $content);
         self::assertStringContainsString('#[Assert\\NotBlank(groups: ', $content);
         self::assertStringContainsString('#[Assert\\Length(min: 1, max: 100, groups: ', $content);
-        self::assertStringContainsString('public function __construct(' . "\n\n" . '        #[Assert\\NotNull(groups: ', $content);
+        self::assertStringContainsString('public function __construct(' . "\n" . '        #[Assert\\NotNull(groups: ', $content);
     }
 
     public function testNativeValidationMethodsAreGenerated(): void
@@ -239,7 +239,7 @@ PHP;
         self::assertStringContainsString('#[Assert\\NotNull(groups: ', $content);
         self::assertStringContainsString('#[Assert\\NotBlank(groups: ', $content);
         self::assertStringContainsString('#[Assert\\Length(min: 1, max: 10, groups: ', $content);
-        self::assertStringContainsString('#[Assert\\Regex(pattern: \'^[a-z]+$\', groups: ', $content);
+        self::assertStringContainsString('#[Assert\\Regex(pattern: \'~^[a-z]+$~\', groups: ', $content);
         self::assertStringContainsString('#[Assert\\Range(min: 1, max: 9, groups: ', $content);
         self::assertStringContainsString('#[Assert\\DivisibleBy(value: 2, groups: ', $content);
         self::assertStringContainsString('#[Assert\\Count(min: 1, max: 3, groups: ', $content);
@@ -258,7 +258,7 @@ PHP;
 
         $content = file_get_contents($this->outputDir . '/Model/ValidationSample.php');
 
-        self::assertStringContainsString('$errors[] = \'requiredName must not be null.\';', $content);
+        self::assertStringNotContainsString('$errors[] = \'requiredName must not be null.\';', $content);
         self::assertStringContainsString('$errors[] = \'requiredName must not be blank.\';', $content);
         self::assertStringContainsString('$errors[] = \'requiredName must have length >= 1.\';', $content);
         self::assertStringContainsString('$errors[] = \'requiredName must have length <= 10.\';', $content);

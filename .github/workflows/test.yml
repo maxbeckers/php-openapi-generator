@@ -40,3 +40,119 @@ jobs:
 
       - name: Run test suite
         run: composer test-fast
+
+      - name: Check generated code
+        run: composer check-generated
+
+  framework:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Symfony 7.4 / PHP 8.2
+            target: symfony
+            php-version: '8.2'
+            dependency: symfony/framework-bundle
+            companion-dependency: symfony/browser-kit
+            constraint: ^7.4
+          - name: Symfony 8.x / PHP 8.4
+            target: symfony
+            php-version: '8.4'
+            dependency: symfony/framework-bundle
+            companion-dependency: symfony/browser-kit
+            constraint: ^8.0
+          - name: Laravel 12 / PHP 8.2
+            target: laravel
+            php-version: '8.2'
+            dependency: orchestra/testbench
+            constraint: ^10.0
+          - name: Laravel 13 / PHP 8.4
+            target: laravel
+            php-version: '8.4'
+            dependency: orchestra/testbench
+            constraint: ^11.0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          extensions: ctype, iconv, intl, mbstring, xml
+          coverage: none
+
+      - name: Cache framework dependencies
+        uses: actions/cache@v4
+        with:
+          path: tests/Framework/${{ matrix.target }}/vendor
+          key: ${{ runner.os }}-framework-${{ matrix.target }}-${{ matrix.constraint }}-php-${{ matrix.php-version }}-${{ hashFiles('composer.json', format('tests/Framework/{0}/composer.json', matrix.target)) }}
+
+      - name: Install Symfony framework lane
+        if: matrix.target == 'symfony'
+        run: >-
+          composer --working-dir=tests/Framework/symfony update
+          --with-all-dependencies --no-interaction --prefer-dist --no-progress
+          --with "${{ matrix.dependency }}:${{ matrix.constraint }}"
+          --with "${{ matrix.companion-dependency }}:${{ matrix.constraint }}"
+
+      - name: Install Laravel framework lane
+        if: matrix.target == 'laravel'
+        run: >-
+          composer --working-dir=tests/Framework/laravel update
+          --with-all-dependencies --no-interaction --prefer-dist --no-progress
+          --with "${{ matrix.dependency }}:${{ matrix.constraint }}"
+
+      - name: Run generated-route framework tests
+        env:
+          OPENAPI_GEN_FRAMEWORK_TESTS: '1'
+        run: composer --working-dir=tests/Framework/${{ matrix.target }} test
+
+  petstore-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ctype, iconv, intl, mbstring, xml
+
+      - name: Install generator dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Install Petstore server example and generate code
+        run: composer --working-dir=examples/petstore-server-symfony update --no-interaction --prefer-dist
+
+      - name: Install Petstore client example and generate code
+        run: composer --working-dir=examples/petstore-client-symfony update --no-interaction --prefer-dist
+
+      - name: Exercise the generated client against the Petstore server
+        run: |
+          set -euo pipefail
+          php -S 127.0.0.1:8080 -t examples/petstore-server-symfony/public examples/petstore-server-symfony/public/index.php > /tmp/petstore-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8080/pets > /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/petstore-server.log
+            exit 1
+          fi
+
+          if ! PETSTORE_BASE_URL=http://127.0.0.1:8080 php tests/Examples/petstore-client-smoke.php; then
+            cat /tmp/petstore-server.log
+            exit 1
+          fi

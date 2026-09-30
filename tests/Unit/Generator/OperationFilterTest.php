@@ -214,6 +214,16 @@ class OperationFilterTest extends TestCase
         self::assertArrayNotHasKey('/catalog/items', $filtered->paths);
     }
 
+    public function testExcludePathsRemovesMatchingPathsAndTheirOnlySchemas(): void
+    {
+        $spec = $this->loadFixture();
+        $filtered = $this->filter->filter($spec, excludePaths: ['/catalog/*']);
+
+        self::assertArrayHasKey('/orders', $filtered->paths);
+        self::assertArrayNotHasKey('/catalog/items', $filtered->paths);
+        self::assertArrayNotHasKey('CatalogItem', $filtered->components->schemas);
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

@@ -7,7 +7,6 @@
 - **Routes helper class** for easy route registration
 - Full Illuminate HTTP integration
 
-If you need different generated glue for Laravel majors, set `$config->frameworkVersion` explicitly, for example `$config->frameworkVersion = '11.0';`.
 
 ## What Gets Generated
 
@@ -39,23 +38,24 @@ abstract class PetsApiController implements PetsApiInterface
     public function listPetsAction(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
     {
         $result = $this->listPets(
-            limit: $request->query('limit'),
+            limit: $this->parseParameter($this->queryParameterValues($request, 'limit'), 'limit', 'int', false),
         );
         return response()->json($result, 200);
     }
 
     public function createPetAction(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
     {
+        $body = $this->parseJsonRequestBody($request, static fn(array $data): NewPet => NewPet::fromRequestArray($data));
         $result = $this->createPet(
-            body: NewPet::fromArray($request->all()),
+            body: $body,
         );
-        return response()->json($result->toArray(), 201);
+        return response()->json($result->toResponseArray(), 201);
     }
 
     public function showPetByIdAction(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
     {
         $result = $this->showPetById(
-            petId: $request->route('petId'),
+            petId: $this->parseParameter($request->route('petId'), 'petId', 'int', true),
         );
         return response()->json($result->toArray(), 200);
     }
@@ -94,6 +94,25 @@ final class PetsApiRoutes
     }
 }
 ```
+
+Generated actions convert path, query, header and cookie values to the declared
+PHP types (`int`, `float`, `bool`, enums, `DateTimeImmutable` for `date` /
+`date-time`, and arrays following the OpenAPI `style`/`explode` rules) through
+the protected `parseParameter()` / `queryParameterValues()` helpers. Missing
+required or invalid values throw a `BadRequestHttpException` (HTTP 400).
+JSON request bodies are read by the protected `parseJsonRequestBody()` helper:
+a missing required body, invalid JSON, a non-object body or a body that cannot
+be hydrated into the DTO also throws a `BadRequestHttpException` (HTTP 400);
+optional bodies are passed as `null` when the request has no content. With
+`validateServerRequest` enabled, failed request validation throws an
+`UnprocessableEntityHttpException` (HTTP 422) for `NativeMethod` and
+`SymfonyConstraints`, and Laravel's `ValidationException` (HTTP 422 with the
+usual `errors` structure) for `LaravelValidation`. Response validation failures
+stay an `InvalidArgumentException` (HTTP 500) because they indicate a server
+bug. Operations whose domain method is not overridden throw a
+`BadMethodCallException`.
+Union return types respond with the status code of the returned model, and
+scalar results are returned as JSON unchanged.
 
 ## Implementation Pattern
 
@@ -253,7 +272,7 @@ Override the `*Action` method for custom headers:
 public function listPetsAction(Request $request): JsonResponse
 {
     $result = $this->listPets(
-        limit: $request->query('limit'),
+        limit: $this->parseParameter($this->queryParameterValues($request, 'limit'), 'limit', 'int', false),
     );
     return response()
         ->json($result, 200)

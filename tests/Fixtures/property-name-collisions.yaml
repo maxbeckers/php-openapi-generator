@@ -1,0 +1,14 @@
+openapi: "3.0.0"
+info:
+  title: Property Name Collision
+  version: "1.0.0"
+paths: {}
+components:
+  schemas:
+    CollisionRecord:
+      type: object
+      properties:
+        record-id:
+          type: string
+        record_id:
+          type: string

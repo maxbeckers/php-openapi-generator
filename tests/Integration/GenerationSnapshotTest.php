@@ -1,0 +1,214 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MaxBeckers\OpenApiGenerator\Tests\Integration;
+
+use MaxBeckers\OpenApiGenerator\Config\FrameworkTarget;
+use MaxBeckers\OpenApiGenerator\Config\GenerationTarget;
+use MaxBeckers\OpenApiGenerator\Config\GeneratorConfig;
+use MaxBeckers\OpenApiGenerator\Config\HttpClientAdapter;
+use MaxBeckers\OpenApiGenerator\Config\ValidationStrategy;
+use MaxBeckers\OpenApiGenerator\Tests\Support\GeneratedCodeTestSupport;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\TestCase;
+
+final class GenerationSnapshotTest extends TestCase
+{
+    use GeneratedCodeTestSupport;
+
+    private const FIXTURES_DIR = __DIR__ . '/../Fixtures';
+    private const SNAPSHOTS_DIR = __DIR__ . '/../Snapshots';
+
+    protected function setUp(): void
+    {
+        $this->initializeGeneratedCodeTestSupport();
+    }
+
+    protected function tearDown(): void
+    {
+        $this->removeGeneratedCodeOutput();
+    }
+
+    #[DataProvider('generationCases')]
+    public function testGenerationMatchesSnapshot(string $case, GeneratorConfig $config): void
+    {
+        $outputDir = $this->generateCode($config, self::FIXTURES_DIR, false);
+        $this->assertAllGeneratedFilesLint($outputDir);
+        $this->assertGeneratedFileStructure($outputDir);
+        $actual = $this->readGeneratedFiles($outputDir);
+        $snapshotDir = self::SNAPSHOTS_DIR . DIRECTORY_SEPARATOR . $case;
+
+        if (getenv('UPDATE_SNAPSHOTS') === '1') {
+            $this->writeSnapshot($snapshotDir, $actual);
+        }
+
+        self::assertDirectoryExists($snapshotDir, "Missing snapshot for {$case}; set UPDATE_SNAPSHOTS=1 to create it.");
+        $expected = $this->readGeneratedFiles($snapshotDir);
+
+        self::assertSame(array_keys($expected), array_keys($actual), "Generated file list differs for {$case}.");
+        foreach ($expected as $path => $content) {
+            self::assertSame($content, $actual[$path], "Snapshot differs for {$case}: {$path}");
+        }
+    }
+
+    public function testGenerationIsDeterministic(): void
+    {
+        $first = $this->generateCode($this->makeConfig(), self::FIXTURES_DIR, false);
+        $firstFiles = $this->readGeneratedFiles($first);
+
+        $this->removeGeneratedCodeOutput();
+        $this->initializeGeneratedCodeTestSupport();
+        $second = $this->generateCode($this->makeConfig(), self::FIXTURES_DIR, false);
+
+        self::assertSame($firstFiles, $this->readGeneratedFiles($second));
+    }
+
+    public function testReadonlyClassesAreDisabledWithoutGeneratedConstructors(): void
+    {
+        $config = self::baseConfig();
+        $config->apiNamespace = '';
+        $config->apiOutputDir = '';
+        $config->generateConstructor = false;
+        $config->disableBuiltinPlugins = true;
+        $outputDir = $this->generateCode($config, self::FIXTURES_DIR, false);
+        $this->assertAllGeneratedFilesLint($outputDir);
+
+        $model = file_get_contents($outputDir . DIRECTORY_SEPARATOR . 'Model' . DIRECTORY_SEPARATOR . 'Address.php');
+        self::assertNotFalse($model);
+        self::assertStringNotContainsString('readonly class Address', $model);
+    }
+
+    /**
+     * @return iterable<string, array{string, GeneratorConfig}>
+     */
+    public static function generationCases(): iterable
+    {
+        foreach ([
+            'models-default' => [true, true],
+            'models-mutable' => [false, true],
+            'models-no-constructor' => [true, false],
+        ] as $case => [$readonly, $constructor]) {
+            $config = self::baseConfig();
+            $config->apiNamespace = '';
+            $config->apiOutputDir = '';
+            $config->phpReadonly = $readonly;
+            $config->generateConstructor = $constructor;
+            if (!$constructor) {
+                $config->disableBuiltinPlugins = true;
+            }
+            yield $case => [$case, $config];
+        }
+
+        foreach (FrameworkTarget::cases() as $framework) {
+            foreach (ValidationStrategy::cases() as $validation) {
+                $case = 'server-' . $framework->value . '-' . $validation->value;
+                $config = self::baseConfig();
+                $config->generationTarget = GenerationTarget::Server;
+                $config->frameworkTarget = $framework;
+                $config->validationStrategy = $validation;
+                $config->validateServerRequest = $validation !== ValidationStrategy::None;
+                $config->validateServerResponse = $validation !== ValidationStrategy::None;
+                yield $case => [$case, $config];
+            }
+        }
+
+        foreach (HttpClientAdapter::cases() as $adapter) {
+            foreach (ValidationStrategy::cases() as $validation) {
+                $case = 'client-' . $adapter->value . '-' . $validation->value;
+                $config = self::baseConfig();
+                $config->generationTarget = GenerationTarget::Client;
+                $config->httpClient = $adapter;
+                $config->validationStrategy = $validation;
+                $config->validateClientRequest = $validation !== ValidationStrategy::None;
+                $config->validateClientResponse = $validation !== ValidationStrategy::None;
+                yield $case => [$case, $config];
+            }
+        }
+    }
+
+    private static function baseConfig(): GeneratorConfig
+    {
+        $config = new GeneratorConfig();
+        $config->specFile = 'feature-test.yaml';
+        $config->modelNamespace = 'Generated\\Model';
+        $config->modelOutputDir = 'Model';
+        $config->apiNamespace = 'Generated\\Api';
+        $config->apiOutputDir = 'Api';
+        $config->phpVersion = '8.2';
+        $config->generateFromArray = true;
+        $config->generateToArray = true;
+
+        return $config;
+    }
+
+    private function makeConfig(): GeneratorConfig
+    {
+        $config = self::baseConfig();
+        $config->generationTarget = GenerationTarget::Client;
+        $config->httpClient = HttpClientAdapter::SymfonyHttpClient;
+
+        return $config;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function readGeneratedFiles(string $directory): array
+    {
+        if (!is_dir($directory)) {
+            return [];
+        }
+
+        $files = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
+        );
+
+        foreach ($iterator as $file) {
+            if (!$file->isFile()) {
+                continue;
+            }
+            $relativePath = substr($file->getPathname(), strlen(rtrim($directory, '/\\')) + 1);
+            $content = file_get_contents($file->getPathname());
+            self::assertNotFalse($content);
+            $files[str_replace('\\', '/', $relativePath)] = preg_replace(
+                '/(@generated by maxbeckers\/php-openapi-generator(?: [^ ]+)? )\([^)]*\)/',
+                '$1(<normalized timestamp>)',
+                $content,
+            ) ?? $content;
+        }
+
+        ksort($files);
+
+        return $files;
+    }
+
+    /**
+     * @param array<string, string> $files
+     */
+    private function writeSnapshot(string $directory, array $files): void
+    {
+        if (is_dir($directory)) {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::CHILD_FIRST,
+            );
+            foreach ($iterator as $file) {
+                $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+            }
+            rmdir($directory);
+        }
+
+        foreach ($files as $relativePath => $content) {
+            $path = $directory . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
+            $parent = dirname($path);
+            if (!is_dir($parent) && !mkdir($parent, 0755, true) && !is_dir($parent)) {
+                throw new \RuntimeException("Unable to create snapshot directory: {$parent}");
+            }
+            if (file_put_contents($path, $content) === false) {
+                throw new \RuntimeException("Unable to write snapshot: {$path}");
+            }
+        }
+    }
+}

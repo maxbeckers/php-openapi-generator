@@ -12,6 +12,8 @@ class Parameter
     public ?string $description = null;
     public bool $deprecated = false;
     public ?Schema $schema = null;
+    public ?string $style = null;
+    public ?bool $explode = null;
     /** @var array<string, mixed> */
     public array $extensions = [];
 }

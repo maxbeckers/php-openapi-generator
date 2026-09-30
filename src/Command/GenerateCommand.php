@@ -32,7 +32,7 @@ class GenerateCommand extends Command
             'target',
             't',
             InputOption::VALUE_OPTIONAL,
-            'Generation target: model, server, or client (overrides config)',
+            'Generation target: server or client (overrides config)',
         );
         $this->addOption(
             'http-client',
@@ -76,25 +76,33 @@ class GenerateCommand extends Command
         // CLI overrides
         $targetOption = $input->getOption('target');
         if ($targetOption !== null) {
-            $config->setGenerationTarget(match ($targetOption) {
-                'client' => GenerationTarget::Client,
-                'server' => GenerationTarget::Server,
-                default  => GenerationTarget::Server,
-            });
+            $target = GenerationTarget::tryFrom($targetOption);
+            if ($target === null) {
+                $output->writeln('<error>Invalid --target value "' . $targetOption . '". Expected: server or client.</error>');
+
+                return Command::INVALID;
+            }
+            $config->setGenerationTarget($target);
         }
         $httpClientOption = $input->getOption('http-client');
         if ($httpClientOption !== null) {
             $adapter = HttpClientAdapter::tryFrom($httpClientOption);
-            if ($adapter !== null) {
-                $config->setHttpClient($adapter);
+            if ($adapter === null) {
+                $output->writeln('<error>Invalid --http-client value "' . $httpClientOption . '". Expected: symfony, guzzle, or psr18.</error>');
+
+                return Command::INVALID;
             }
+            $config->setHttpClient($adapter);
         }
         $frameworkOption = $input->getOption('framework');
         if ($frameworkOption !== null) {
             $fw = FrameworkTarget::tryFrom($frameworkOption);
-            if ($fw !== null) {
-                $config->setFrameworkTarget($fw);
+            if ($fw === null) {
+                $output->writeln('<error>Invalid --framework value "' . $frameworkOption . '". Expected: none, symfony, or laravel.</error>');
+
+                return Command::INVALID;
             }
+            $config->setFrameworkTarget($fw);
         }
 
         $output->writeln('<info>Generating OpenAPI models...</info>');

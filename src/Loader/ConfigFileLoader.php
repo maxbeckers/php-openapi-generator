@@ -31,6 +31,10 @@ class ConfigFileLoader
             ));
         }
 
+        $configDir = dirname((string) realpath($configFilePath));
+        $config->specFile = $this->resolvePath($config->specFile, $configDir);
+        $config->outputDir = $this->resolvePath($config->outputDir, $configDir);
+
         return $config;
     }
 
@@ -39,5 +43,14 @@ class ConfigFileLoader
         $path = rtrim($baseDir, '/\\') . DIRECTORY_SEPARATOR . self::CONFIG_FILENAME;
 
         return file_exists($path) ? $path : null;
+    }
+
+    private function resolvePath(string $path, string $baseDir): string
+    {
+        if ($path === '' || $path[0] === '/' || (strlen($path) > 1 && $path[1] === ':')) {
+            return $path;
+        }
+
+        return rtrim($baseDir, '/\\') . DIRECTORY_SEPARATOR . $path;
     }
 }

@@ -194,6 +194,23 @@ class OpenApiLoader
             $schema->hasDefault = true;
         }
 
+        if (array_key_exists('const', $data)) {
+            $schema->const = $data['const'];
+            $schema->hasConst = true;
+            $schema->enum = [$data['const']];
+            if ($schema->type === null) {
+                $schema->type = match (gettype($data['const'])) {
+                    'boolean' => 'boolean',
+                    'integer' => 'integer',
+                    'double' => 'number',
+                    'string' => 'string',
+                    'array' => 'array',
+                    'object' => 'object',
+                    default => null,
+                };
+            }
+        }
+
         $schema->example = $data['example'] ?? null;
 
         if (isset($data['enum']) && is_array($data['enum'])) {
@@ -362,7 +379,7 @@ class OpenApiLoader
         $op->tags = isset($data['tags']) && is_array($data['tags'])
             ? array_map('strval', $data['tags'])
             : [];
-        $op->security = $data['security'] ?? [];
+        $op->security = array_key_exists('security', $data) && is_array($data['security']) ? $data['security'] : null;
         $op->extensions = $this->extractExtensions($data);
 
         foreach ($data['parameters'] ?? [] as $paramData) {
@@ -406,6 +423,8 @@ class OpenApiLoader
         $param->required = (bool) ($data['required'] ?? ($param->in === 'path'));
         $param->description = isset($data['description']) ? (string) $data['description'] : null;
         $param->deprecated = (bool) ($data['deprecated'] ?? false);
+        $param->style = isset($data['style']) ? (string) $data['style'] : null;
+        $param->explode = isset($data['explode']) ? (bool) $data['explode'] : null;
         $param->extensions = $this->extractExtensions($data);
 
         if (isset($data['schema']) && is_array($data['schema'])) {

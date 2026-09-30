@@ -7,7 +7,6 @@ Use this adapter when your application standardizes on Guzzle.
 ```php
 $config->generationTarget = GenerationTarget::Client;
 $config->httpClient = HttpClientAdapter::Guzzle;
-$config->httpClientVersion = '7.8';
 ```
 
 ## Constructor Signature
@@ -23,19 +22,22 @@ public function __construct(
 ## Request Style
 
 ```php
+$url = rtrim($this->baseUrl, '/') . '/pets/' . rawurlencode((string) $petId)
+    . ($queryString === '' ? '' : '?' . $queryString);
 $options = [];
-$options[RequestOptions::QUERY] = $query;
-$options[RequestOptions::JSON] = $body->toArray();
+$options[RequestOptions::JSON] = $body->toRequestArray();
+$options[RequestOptions::HTTP_ERRORS] = false;
 
-$response = $this->httpClient->request('PUT', $this->baseUrl . "/pets/{$petId}", $options);
+$response = $this->httpClient->request('PUT', $url, $options);
 ```
 
 ## Response Mapping
 
-The generated code decodes response JSON explicitly:
+The generated code decodes response JSON explicitly and rejects non-JSON
+content types or invalid JSON with an `UnexpectedValueException`:
 
 ```php
-$data = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+$data = $this->decodeJsonResponse($response->getHeaderLine('Content-Type'), (string) $response->getBody(), 'updatePet');
 ```
 
 Then maps the payload to generated models via `fromArray()`.

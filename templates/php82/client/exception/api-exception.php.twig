@@ -1,0 +1,25 @@
+{% import 'shared/generation-meta-macros.php.twig' as generation %}
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+{{ generation.renderFileHeader(generationMeta, '') }}
+
+class ApiException extends \RuntimeException
+{
+    /**
+     * @param mixed $payload Decoded error payload: a generated model when the response is documented, otherwise the decoded JSON (or null)
+     */
+    public function __construct(
+        string $message,
+        public readonly int $statusCode,
+        public readonly string $operationId,
+        public readonly string $responseBody,
+        public readonly mixed $payload = null,
+        ?\Throwable $previous = null,
+    ) {
+        parent::__construct($message, $statusCode, $previous);
+    }
+}

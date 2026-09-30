@@ -17,8 +17,8 @@ class Operation
     public ?RequestBody $requestBody = null;
     /** @var array<string, Response>  key = HTTP status code string, e.g. '200', 'default' */
     public array $responses = [];
-    /** @var array<array<string, string[]>> */
-    public array $security = [];
+    /** @var array<array<string, string[]>>|null  null = inherit the global security requirements */
+    public ?array $security = null;
     /** @var array<string, mixed> */
     public array $extensions = [];
 }

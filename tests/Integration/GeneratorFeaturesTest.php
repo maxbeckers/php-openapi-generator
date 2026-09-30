@@ -17,6 +17,7 @@ use MaxBeckers\OpenApiGenerator\Plugin\Extension\PropertyExtensionContext;
 use MaxBeckers\OpenApiGenerator\Plugin\Extension\PropertyExtensionPluginInterface;
 use MaxBeckers\OpenApiGenerator\Plugin\Extension\PropertyExtensionResult;
 use MaxBeckers\OpenApiGenerator\Service\OpenApiService;
+use MaxBeckers\OpenApiGenerator\Tests\Support\GeneratedCodeTestSupport;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -32,6 +33,8 @@ use PHPUnit\Framework\TestCase;
  */
 class GeneratorFeaturesTest extends TestCase
 {
+    use GeneratedCodeTestSupport;
+
     private string $outputDir;
     private OpenApiService $service;
     private static OpenApiService $sharedService;
@@ -62,7 +65,7 @@ class GeneratorFeaturesTest extends TestCase
 
         // Required non-nullable Money property — toArray() must call ->toArray()
         self::assertStringContainsString(
-            "\$data['total'] = \$this->total->toArray();",
+            "\$data['total'] = method_exists(\$this->total, 'toArray') ? \$this->total->toArray() : \$this->total;",
             $orderContent,
             'Required non-nullable nested object must call ->toArray()',
         );
@@ -90,7 +93,7 @@ class GeneratorFeaturesTest extends TestCase
             $orderContent,
         );
         self::assertStringContainsString(
-            "\$data['shippingAddress'] = \$this->shippingAddress->toArray();",
+            "\$data['shippingAddress'] = method_exists(\$this->shippingAddress, 'toArray') ? \$this->shippingAddress->toArray() : \$this->shippingAddress;",
             $orderContent,
         );
     }
@@ -104,11 +107,11 @@ class GeneratorFeaturesTest extends TestCase
         $orderContent = file_get_contents($this->outputDir . '/Model/Order.php');
         self::assertNotFalse($orderContent);
 
-        // omitNulls=false → nullable object uses null-safe operator
+        // omitNulls=false → the guard preserves null and serializes model objects
         self::assertStringContainsString(
-            "\$data['shippingAddress'] = \$this->shippingAddress?->toArray();",
+            "\$data['shippingAddress'] = is_object(\$this->shippingAddress) && method_exists(\$this->shippingAddress, 'toArray') ? \$this->shippingAddress->toArray() : \$this->shippingAddress;",
             $orderContent,
-            'Nullable nested object without omitNulls must use ?->toArray()',
+            'Nullable nested object without omitNulls must be guarded before calling toArray()',
         );
     }
 
@@ -456,7 +459,7 @@ class GeneratorFeaturesTest extends TestCase
             $orderContent,
         );
         self::assertStringContainsString(
-            "\$data['shippingAddress'] = \$this->shippingAddress->toArray();",
+            "\$data['shippingAddress'] = method_exists(\$this->shippingAddress, 'toArray') ? \$this->shippingAddress->toArray() : \$this->shippingAddress;",
             $orderContent,
         );
     }
@@ -558,15 +561,7 @@ class GeneratorFeaturesTest extends TestCase
         $config = $this->makeConfig();
         $this->service->generate($config, self::FIXTURES_DIR);
 
-        $modelDir = $this->outputDir . '/Model';
-        foreach (glob($modelDir . '/*.php') as $file) {
-            $output = shell_exec(PHP_BINARY . ' -l ' . escapeshellarg($file) . ' 2>&1');
-            self::assertStringContainsString(
-                'No syntax errors',
-                (string) $output,
-                "Syntax error in $file",
-            );
-        }
+        $this->assertAllGeneratedFilesLint($this->outputDir);
     }
 
     private function makeConfig(): GeneratorConfig

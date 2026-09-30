@@ -1,0 +1,13 @@
+{% import 'shared/generation-meta-macros.php.twig' as generation %}
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+{{ generation.renderFileHeader(generationMeta, '') }}
+
+final class {{ className }} extends ApiException
+{
+    public const STATUS_CODE = {{ statusCode }};
+}
