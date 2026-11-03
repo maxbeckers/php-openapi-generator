@@ -88,6 +88,12 @@ $config->generateToArray = true;
 return $config;
 ```
 
+The target PHP version defaults to the running PHP version (`PHP_VERSION`).
+Override it with `$config->phpVersion = '8.5'` if needed. Templates automatically
+fall back to the highest available version not newer than the target; currently,
+PHP `8.4.22` and `8.5` both use the shipped PHP 8.2 templates.
+See [PHP version and template fallback](docs/configuration-reference.md#php-version-and-template-fallback).
+
 ### 2) Generate code
 
 ```bash

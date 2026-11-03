@@ -10,8 +10,8 @@ use Twig\TwigFilter;
 
 /**
  * Thin wrapper around Twig that loads templates from the versioned template
- * directory (e.g. templates/php82/), with a fallback to the nearest available
- * version when an exact match is not present.
+ * directory (e.g. templates/php82/), with a fallback to the highest available
+ * version not newer than the target, or the highest available version if none qualify.
  */
 class TemplateEngine
 {
@@ -19,7 +19,7 @@ class TemplateEngine
 
     /**
      * @param string               $templateBasePath Absolute path to the templates/ directory
-     * @param string               $phpVersion       PHP version string, e.g. "8.2"
+     * @param string               $phpVersion       Target PHP version, e.g. "8.5" or "8.4.22"
      * @param array<string, mixed> $globals          Shared Twig globals available in every template
      */
     public function __construct(string $templateBasePath, string $phpVersion, array $globals = [])

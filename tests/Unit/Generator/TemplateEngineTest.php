@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MaxBeckers\OpenApiGenerator\Tests\Unit\Generator;
 
+use MaxBeckers\OpenApiGenerator\Config\GeneratorConfig;
 use MaxBeckers\OpenApiGenerator\Generator\TemplateEngine;
 use PHPUnit\Framework\TestCase;
 
@@ -36,16 +37,56 @@ class TemplateEngineTest extends TestCase
         self::assertSame('Hello world!', $engine->render('hello.twig', ['name' => 'world']));
     }
 
+    public function testUsesRunningPhpVersionWithoutAnOverride(): void
+    {
+        $config = new GeneratorConfig();
+        $engine = new TemplateEngine($this->templateBasePath, $config->phpVersion);
+
+        self::assertSame('Hello world!', $engine->render('hello.twig', ['name' => 'world']));
+    }
+
+    /**
+     * @dataProvider templateSelectionProvider
+     */
+    public function testSelectsTemplatesByMajorAndMinorVersion(string $phpVersion, string $expected): void
+    {
+        foreach (['83', '85'] as $version) {
+            $dir = $this->templateBasePath . '/php' . $version;
+            mkdir($dir);
+            file_put_contents($dir . '/hello.twig', 'PHP ' . $version);
+        }
+
+        $engine = new TemplateEngine($this->templateBasePath, $phpVersion);
+
+        self::assertSame($expected, $engine->render('hello.twig', ['name' => 'world']));
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function templateSelectionProvider(): array
+    {
+        return [
+            'exact match' => ['8.2', 'Hello world!'],
+            'exact match with patch' => ['8.3.22', 'PHP 83'],
+            'nearest lower version, not higher' => ['8.4.22', 'PHP 83'],
+            'newest exact match' => ['8.5', 'PHP 85'],
+            'future version' => ['9.0', 'PHP 85'],
+        ];
+    }
+
     /**
      * @return array<string, array{0: string}>
      */
     public static function fallbackVersionProvider(): array
     {
         return [
+            'php 8.2 patch version' => ['8.2.30'],
             'php 8.3' => ['8.3'],
             'php 8.4' => ['8.4'],
             'php 8.4 patch version' => ['8.4.22'],
             'php 8.5' => ['8.5'],
+            'php 9.0' => ['9.0'],
         ];
     }
 

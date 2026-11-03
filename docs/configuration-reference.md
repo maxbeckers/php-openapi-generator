@@ -6,7 +6,27 @@ This page covers the most important options in `php-openapi-generator.php`.
 
 - `$config->specFile` (default: `openapi.yaml`)
 - `$config->outputDir` (default: `generated`)
-- `$config->phpVersion` (default: `8.2`)
+- `$config->phpVersion` (default: `PHP_VERSION`, the PHP version running the generator)
+
+### PHP Version and Template Fallback
+
+You can leave `phpVersion` unset or override it directly or with
+`$config->setPhpVersion('8.5')`. Any target version can be configured; it does not
+need a matching template directory. Full versions such as `8.4.22` are supported.
+
+Template selection uses the major and minor version, ignoring the patch level:
+
+1. Use the matching directory if available (for example, `8.2.30` uses `templates/php82`).
+2. Otherwise, use the highest available template version not newer than the target.
+3. If all available templates are newer than the target, use the highest available template version.
+
+Currently, only `templates/php82` is shipped. Running the generator on PHP
+`8.4.22` without configuring `phpVersion`, or explicitly setting it to `8.5`,
+therefore uses the PHP 8.2 templates. The configured version is not changed by
+template fallback.
+
+Setting an older target does not make these templates compatible with older PHP:
+the generator and the shipped templates require PHP 8.2 or newer.
 
 ## Namespaces and Output Directories
 

@@ -17,8 +17,8 @@ class GeneratorConfig
     /** Directory where generated files are written (absolute or relative to config file). */
     public string $outputDir = 'generated';
 
-    /** PHP version for which to generate code (e.g. '8.2'). */
-    public string $phpVersion = '8.2';
+    /** Target PHP version; defaults to the running PHP version, including its patch level. */
+    public string $phpVersion = PHP_VERSION;
 
     /** Root namespace for generated model classes. */
     public string $modelNamespace = 'Generated\\Model';

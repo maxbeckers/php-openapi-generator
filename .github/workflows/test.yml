@@ -11,7 +11,7 @@ jobs:
 
     strategy:
       matrix:
-        php-version: ['8.2', '8.4']
+        php-version: ['8.2', '8.5']
 
     steps:
       - uses: actions/checkout@v4
@@ -58,9 +58,9 @@ jobs:
             dependency: symfony/framework-bundle
             companion-dependency: symfony/browser-kit
             constraint: ^7.4
-          - name: Symfony 8.x / PHP 8.4
+          - name: Symfony 8.x / PHP 8.5
             target: symfony
-            php-version: '8.4'
+            php-version: '8.5'
             dependency: symfony/framework-bundle
             companion-dependency: symfony/browser-kit
             constraint: ^8.0
@@ -69,9 +69,9 @@ jobs:
             php-version: '8.2'
             dependency: orchestra/testbench
             constraint: ^10.0
-          - name: Laravel 13 / PHP 8.4
+          - name: Laravel 13 / PHP 8.5
             target: laravel
-            php-version: '8.4'
+            php-version: '8.5'
             dependency: orchestra/testbench
             constraint: ^11.0
 
@@ -120,7 +120,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
           extensions: ctype, iconv, intl, mbstring, xml
 
       - name: Install generator dependencies

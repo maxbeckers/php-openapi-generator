@@ -31,9 +31,15 @@ class ModelGenerationTest extends TestCase
         $this->removeDir($this->outputDir);
     }
 
-    public function testGeneratesModelsFromPetstore(): void
+    /**
+     * @dataProvider targetPhpVersionProvider
+     */
+    public function testGeneratesModelsFromPetstore(?string $phpVersion): void
     {
         $config = $this->makeConfig();
+        if ($phpVersion !== null) {
+            $config->phpVersion = $phpVersion;
+        }
         $config->classSuffix = '';
         $config->generateFromArray = true;
         $config->generateToArray = true;
@@ -50,6 +56,17 @@ class ModelGenerationTest extends TestCase
         self::assertFileExists($modelDir . '/PetStatus.php');
         // Pets is an array schema → Alias kind, no file generated
         self::assertFileDoesNotExist($modelDir . '/Pets.php');
+    }
+
+    /** @return array<string, array{0: string|null}> */
+    public static function targetPhpVersionProvider(): array
+    {
+        return [
+            'running PHP version' => [null],
+            'explicit PHP 8.2' => ['8.2'],
+            'explicit patch version' => ['8.4.22'],
+            'explicit PHP 8.5' => ['8.5'],
+        ];
     }
 
     public function testGeneratedPetClassHasCorrectStructure(): void
@@ -385,7 +402,6 @@ PHP;
         $config->outputDir = $this->outputDir;
         $config->modelNamespace = 'Generated\\Model';
         $config->modelOutputDir = 'Model';
-        $config->phpVersion = '8.2';
 
         return $config;
     }
