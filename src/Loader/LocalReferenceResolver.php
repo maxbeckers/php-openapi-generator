@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace MaxBeckers\OpenApiGenerator\Loader;
 
 use MaxBeckers\YamlParser\YamlParser;
+use MaxBeckers\OpenApiGenerator\Validation\Diagnostic;
+use MaxBeckers\OpenApiGenerator\Validation\DiagnosticBag;
+use MaxBeckers\OpenApiGenerator\Validation\StructureValidator;
 
 class LocalReferenceResolver
 {
@@ -22,6 +25,10 @@ class LocalReferenceResolver
 
     private string $rootPath = '';
     private string $rootDirectory = '';
+    private ?DiagnosticBag $diagnostics = null;
+
+    /** @var array<string, array{string, string}> */
+    private array $sources = [];
 
     public function __construct(private readonly bool $allowReferencesOutsideRoot = false)
     {
@@ -35,10 +42,18 @@ class LocalReferenceResolver
         $this->documentCache = [];
         $this->imports = [];
         $this->componentSources = [];
+        $this->sources = [];
 
         $this->rootPath = $this->canonicalPath($path, null, true);
         $this->rootDirectory = dirname($this->rootPath);
         $this->rootDocument = $this->loadDocument($this->rootPath);
+        $this->sources[''] = [$this->rootPath, ''];
+        if ($this->diagnostics !== null) {
+            (new StructureValidator())->validate($this->rootDocument, $this->diagnostics, $this->rootPath);
+            if ($this->diagnostics->hasErrors()) {
+                return $this->rootDocument;
+            }
+        }
 
         $resolved = $this->rootDocument;
         $components = $this->rootDocument['components'] ?? [];
@@ -74,6 +89,39 @@ class LocalReferenceResolver
         }
 
         return $this->mergeImports($resolved);
+    }
+
+    /**
+     * Continues past failed references only to collect diagnostics. The returned
+     * document must not be consumed when the bag contains errors.
+     *
+     * @return array<string, mixed>
+     */
+    public function resolveWithDiagnostics(string $path, DiagnosticBag $diagnostics): array
+    {
+        $this->diagnostics = $diagnostics;
+        try {
+            return $this->resolve($path);
+        } finally {
+            $this->diagnostics = null;
+        }
+    }
+
+    /** @return array{?string, string} */
+    public function sourceLocation(string $pointer): array
+    {
+        $prefix = $pointer;
+        while (true) {
+            if (isset($this->sources[$prefix])) {
+                [$document, $original] = $this->sources[$prefix];
+
+                return [$document, $original . substr($pointer, strlen($prefix))];
+            }
+            if ($prefix === '') {
+                return [null, $pointer];
+            }
+            $prefix = substr($prefix, 0, (int) strrpos($prefix, '/'));
+        }
     }
 
     /**
@@ -126,6 +174,33 @@ class LocalReferenceResolver
         array $location,
         array $activeReferences,
     ): mixed {
+        try {
+            return $this->resolveNodeValue($node, $documentPath, $location, $activeReferences);
+        } catch (ReferenceResolutionException $exception) {
+            if ($this->diagnostics === null) {
+                throw $exception;
+            }
+            $pointer = '/' . implode('/', array_map($this->encodePointerToken(...), $location));
+            [$document, $pointer] = $this->sourceLocation($pointer);
+            $this->diagnostics->add(new Diagnostic(
+                'reference.invalid',
+                'error',
+                Diagnostic::append($pointer, '$ref'),
+                $exception->getMessage(),
+                'Use an existing local file and JSON Pointer without sibling fields.',
+                $document,
+            ));
+
+            return [];
+        }
+    }
+
+    /**
+     * @param string[] $location
+     * @param string[] $activeReferences
+     */
+    private function resolveNodeValue(mixed $node, string $documentPath, array $location, array $activeReferences): mixed
+    {
         if (!is_array($node)) {
             return $node;
         }
@@ -178,7 +253,14 @@ class LocalReferenceResolver
         $isExternal = $filePart !== '';
 
         if (!$isExternal && $documentPath === $this->rootPath) {
-            $this->evaluatePointer($this->rootDocument, $fragment, $this->rootPath, $reference);
+            $target = $this->evaluatePointer($this->rootDocument, $fragment, $this->rootPath, $reference);
+            if (!is_array($target)) {
+                throw new ReferenceResolutionException(sprintf(
+                    'Reference "%s" resolves to %s; an object or array is required.',
+                    $reference,
+                    get_debug_type($target),
+                ));
+            }
 
             return ['$ref' => $reference];
         }
@@ -211,6 +293,7 @@ class LocalReferenceResolver
             if ($this->isRootComponentLocation($location, $category, $name)) {
                 $this->assertNoExternalCycle($targetId, $activeReferences, $isExternal);
                 $this->componentSources[$componentKey] = $targetId;
+                $this->recordSource($location, $targetPath, $fragment);
 
                 return $this->resolveNode($target, $targetPath, $location, [...$activeReferences, $targetId]);
             }
@@ -244,6 +327,7 @@ class LocalReferenceResolver
 
             $this->assertNoExternalCycle($targetId, $activeReferences, $isExternal);
             $this->componentSources[$componentKey] = $targetId;
+            $this->recordSource(['components', $category, $name], $targetPath, $fragment);
             $this->imports[$category][$name] = $this->resolveNode(
                 $target,
                 $targetPath,
@@ -255,6 +339,7 @@ class LocalReferenceResolver
         }
 
         $this->assertNoCycle($targetId, $activeReferences);
+        $this->recordSource($location, $targetPath, $fragment);
 
         return $this->resolveNode($target, $targetPath, $location, [...$activeReferences, $targetId]);
     }
@@ -391,18 +476,28 @@ class LocalReferenceResolver
                 }
 
                 $location = ['components', (string) $category, (string) $name];
-                [$filePart, $fragment] = $this->splitReference(
-                    $item['$ref'],
-                    $this->rootPath,
-                    $location,
-                );
+                try {
+                    [$filePart, $fragment] = $this->splitReference(
+                        $item['$ref'],
+                        $this->rootPath,
+                        $location,
+                    );
+                    $targetPath = $filePart !== ''
+                        ? $this->canonicalPath(rawurldecode($filePart), $this->rootDirectory)
+                        : $this->rootPath;
+                } catch (ReferenceResolutionException $exception) {
+                    if ($this->diagnostics === null) {
+                        throw $exception;
+                    }
+                    // The normal traversal reports this reference at its source.
+                    continue;
+                }
                 $targetComponent = $this->componentFromFragment($fragment);
 
                 if ($filePart === '' || $targetComponent !== [(string) $category, (string) $name]) {
                     continue;
                 }
 
-                $targetPath = $this->canonicalPath(rawurldecode($filePart), $this->rootDirectory);
                 $this->componentSources[(string) $category . '/' . (string) $name] = $targetPath . '#' . $fragment;
             }
         }
@@ -529,6 +624,13 @@ class LocalReferenceResolver
     private function encodePointerToken(string $token): string
     {
         return str_replace(['~', '/'], ['~0', '~1'], $token);
+    }
+
+    /** @param string[] $location */
+    private function recordSource(array $location, string $document, string $pointer): void
+    {
+        $outputPointer = '/' . implode('/', array_map($this->encodePointerToken(...), $location));
+        $this->sources[$outputPointer] = [$document, $pointer];
     }
 
     private function normalise(mixed $value): mixed

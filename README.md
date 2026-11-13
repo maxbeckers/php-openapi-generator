@@ -25,6 +25,7 @@ This package is designed for teams that want generated code to feel like hand-wr
 - Operation filtering by tags, operation IDs, and path patterns
 - Extension plugin system for `x-*` vendor extensions (for example `x-trim`)
 - Local external `$ref` support across YAML and JSON documents
+- Pre-generation diagnostics with source pointers and a validate-only CLI command
 
 ## Requirements
 
@@ -134,7 +135,14 @@ Then:
 vendor/bin/openapi-gen --target=server --framework=symfony
 vendor/bin/openapi-gen --target=server --framework=laravel
 vendor/bin/openapi-gen --target=client --http-client=psr18
+vendor/bin/openapi-gen validate --strict
 ```
+
+`validate` uses the same preparation pipeline without writing generated files.
+Compatibility diagnostics warn by default; `--strict` or
+`$config->strictSpecValidation = true` makes them errors. Malformed input,
+reference failures, and unsafe generated-name collisions always fail.
+See [Pre-generation validation](docs/validation.md#pre-generation-validation).
 
 ## What Gets Generated
 

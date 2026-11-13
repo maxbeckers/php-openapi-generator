@@ -16,12 +16,14 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 #[AsCommand(name: 'generate', description: 'Generate PHP model classes from an OpenAPI spec')]
 class GenerateCommand extends Command
 {
     protected function configure(): void
     {
+        $this->addOption('strict', null, InputOption::VALUE_NONE, 'Treat preflight compatibility warnings as errors');
         $this->addOption(
             'config',
             'c',
@@ -105,14 +107,29 @@ class GenerateCommand extends Command
             $config->setFrameworkTarget($fw);
         }
 
-        $output->writeln('<info>Generating OpenAPI models...</info>');
+        if ($input->getOption('strict')) {
+            $config->strictSpecValidation = true;
+        }
+
+        $validating = $this->isValidationOnly();
+        $output->writeln($validating ? '<info>Validating OpenAPI input...</info>' : '<info>Generating OpenAPI models...</info>');
 
         try {
             $service = new OpenApiService(new OpenApiLoader(), new FileWriter());
-            $service->generate($config, dirname($configFile));
-            $output->writeln('<info>Done.</info>');
+            $diagnostics = $validating
+                ? $service->validate($config, dirname($configFile))
+                : $service->generate($config, dirname($configFile));
+            foreach ($diagnostics->all() as $diagnostic) {
+                $output->writeln(OutputFormatter::escape((string) $diagnostic));
+            }
+            if ($diagnostics->hasErrors()) {
+                $output->writeln('<error>Validation failed.</error>');
+
+                return Command::FAILURE;
+            }
+            $output->writeln($validating ? '<info>Validation passed.</info>' : '<info>Done.</info>');
         } catch (\Throwable $e) {
-            $output->writeln('<error>Generation failed: ' . $e->getMessage() . '</error>');
+            $output->writeln('<error>' . ($validating ? 'Validation' : 'Generation') . ' failed: ' . OutputFormatter::escape($e->getMessage()) . '</error>');
             if ($output->isVerbose()) {
                 $output->writeln($e->getTraceAsString());
             }
@@ -121,5 +138,10 @@ class GenerateCommand extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    protected function isValidationOnly(): bool
+    {
+        return false;
     }
 }

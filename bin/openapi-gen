@@ -25,10 +25,12 @@ if (!$autoloaderFound) {
 
 use MaxBeckers\OpenApiGenerator\Command\CleanCommand;
 use MaxBeckers\OpenApiGenerator\Command\GenerateCommand;
+use MaxBeckers\OpenApiGenerator\Command\ValidateCommand;
 use Symfony\Component\Console\Application;
 
 $application = new Application('openapi-gen', '1.0.0');
-$application->add(new GenerateCommand());
-$application->add(new CleanCommand());
+$application->addCommand(new GenerateCommand());
+$application->addCommand(new CleanCommand());
+$application->addCommand(new ValidateCommand());
 $application->setDefaultCommand('generate');
 $application->run();

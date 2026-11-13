@@ -18,9 +18,17 @@ use MaxBeckers\OpenApiGenerator\Spec\Schema;
 use MaxBeckers\OpenApiGenerator\Spec\SecurityScheme;
 use MaxBeckers\OpenApiGenerator\Spec\Server;
 use MaxBeckers\OpenApiGenerator\Spec\Tag;
+use MaxBeckers\OpenApiGenerator\Validation\Diagnostic;
+use MaxBeckers\OpenApiGenerator\Validation\DiagnosticBag;
+use MaxBeckers\OpenApiGenerator\Validation\StructureValidator;
 
 class OpenApiLoader
 {
+    private ?LocalReferenceResolver $inspectedResolver = null;
+
+    /** @var array<string, mixed> */
+    private array $inspectedDocument = [];
+
     public function __construct(private readonly ?LocalReferenceResolver $referenceResolver = null)
     {
     }
@@ -33,6 +41,50 @@ class OpenApiLoader
         $raw = ($this->referenceResolver ?? new LocalReferenceResolver())->resolve($path);
 
         return $this->load($raw);
+    }
+
+    public function inspectFile(string $path, DiagnosticBag $diagnostics): ?OpenApiSpec
+    {
+        $resolver = $this->referenceResolver ?? new LocalReferenceResolver();
+        $this->inspectedResolver = $resolver;
+        $this->inspectedDocument = [];
+        try {
+            $raw = $resolver->resolveWithDiagnostics($path, $diagnostics);
+        } catch (ReferenceResolutionException | \InvalidArgumentException $exception) {
+            $diagnostics->add(new Diagnostic(
+                'document.unreadable',
+                'error',
+                '',
+                $exception->getMessage(),
+                'Provide a readable YAML or JSON OpenAPI document.',
+                $path,
+            ));
+
+            return null;
+        }
+        if ($diagnostics->hasErrors()) {
+            return null;
+        }
+        (new StructureValidator())->validate($raw, $diagnostics, $path, $resolver->sourceLocation(...));
+        if ($diagnostics->hasErrors()) {
+            return null;
+        }
+
+        $this->inspectedDocument = $raw;
+
+        return $this->load($raw);
+    }
+
+    /** @return array<string, mixed> */
+    public function inspectedDocument(): array
+    {
+        return $this->inspectedDocument;
+    }
+
+    /** @return array{?string, string} */
+    public function sourceLocation(string $pointer): array
+    {
+        return $this->inspectedResolver?->sourceLocation($pointer) ?? [null, $pointer];
     }
 
     /**

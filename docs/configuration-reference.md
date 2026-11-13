@@ -63,6 +63,10 @@ the generator and the shipped templates require PHP 8.2 or newer.
 
 ## Validation Controls
 
+- `$config->strictSpecValidation` (default: `false`): promote pre-generation
+  compatibility warnings to errors. Also available as `--strict` on `generate`
+  and `validate`; the CLI flag enables strict mode without mutating the config
+  file. Structural/reference failures and unsafe collisions always fail.
 - `$config->validationStrategy` (`ValidationStrategy::None|SymfonyConstraints|NativeMethod|LaravelValidation`)
 - `$config->validateServerRequest`
 - `$config->validateServerResponse`
@@ -72,6 +76,9 @@ the generator and the shipped templates require PHP 8.2 or newer.
 These four flags inject runtime validation calls in generated server/client API classes when `validationStrategy` is `ValidationStrategy::NativeMethod`, `ValidationStrategy::SymfonyConstraints`, or `ValidationStrategy::LaravelValidation`.
 
 See [Validation Strategies](./validation.md) for behavior and recommended defaults.
+Preflight checks are independent of these runtime flags. Run
+`vendor/bin/openapi-gen validate --strict` to check generation input without
+creating generated output.
 
 ## Operation Filtering
 

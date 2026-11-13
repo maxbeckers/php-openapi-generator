@@ -14,6 +14,7 @@ use MaxBeckers\OpenApiGenerator\FileWriter\FileWriter;
 use MaxBeckers\OpenApiGenerator\Loader\ConfigFileLoader;
 use MaxBeckers\OpenApiGenerator\Loader\OpenApiLoader;
 use MaxBeckers\OpenApiGenerator\Service\OpenApiService;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 class ComposerPlugin implements PluginInterface, EventSubscriberInterface
 {
@@ -70,10 +71,13 @@ class ComposerPlugin implements PluginInterface, EventSubscriberInterface
 
         try {
             $service = new OpenApiService(new OpenApiLoader(), new FileWriter());
-            $service->generate($config, dirname($configFile));
+            $diagnostics = $service->generate($config, dirname($configFile));
+            foreach ($diagnostics->all() as $diagnostic) {
+                $this->io->writeError(OutputFormatter::escape('[openapi-generator] ' . $diagnostic));
+            }
             $this->io->write('<info>[openapi-generator] Done.</info>');
         } catch (\Throwable $e) {
-            $this->io->writeError('<error>[openapi-generator] Generation failed: ' . $e->getMessage() . '</error>');
+            $this->io->writeError('<error>[openapi-generator] Generation failed: ' . OutputFormatter::escape($e->getMessage()) . '</error>');
         }
     }
 }

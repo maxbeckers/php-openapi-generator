@@ -143,6 +143,9 @@ class GeneratorConfig
     // Validation
     // -------------------------------------------------------------------------
 
+    /** Promote newly introduced preflight compatibility warnings to errors. */
+    public bool $strictSpecValidation = false;
+
     /** Strategy for generating validation code. */
     public ValidationStrategy $validationStrategy = ValidationStrategy::None;
 
@@ -449,6 +452,13 @@ class GeneratorConfig
     public function setValidationStrategy(ValidationStrategy $validationStrategy): static
     {
         $this->validationStrategy = $validationStrategy;
+
+        return $this;
+    }
+
+    public function setStrictSpecValidation(bool $strictSpecValidation): static
+    {
+        $this->strictSpecValidation = $strictSpecValidation;
 
         return $this;
     }
